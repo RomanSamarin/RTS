@@ -14,19 +14,19 @@ public class Barracks : MonoBehaviour
     public int wheatCost = 0;
 
     [Header("Training")]
-    public float trainingTime = 3f; // время тренировки в секундах
-    public float spacing = 1.5f;    // расстояние между юнитами при спавне
-    public int unitsPerRow = 5;     // количество юнитов в ряду перед переходом на следующую строку
+    public float trainingTime = 3f; // пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+    public float spacing = 1.5f;    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+    public int unitsPerRow = 5;     // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 
     private bool isTraining = false;
     private Transform spawnPoint;
 
-    // Общий список всех юнитов, созданных всеми казармами
+    // пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     private static List<GameObject> allUnits = new List<GameObject>();
 
     private void Awake()
     {
-        // Создаем spawnPoint перед казармой
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ spawnPoint пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         spawnPoint = new GameObject("SpawnPoint").transform;
         spawnPoint.SetParent(transform);
 
@@ -44,25 +44,27 @@ public class Barracks : MonoBehaviour
 
     private void OnMouseDown()
     {
-        // Открываем меню здания через BuildingUIManager
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ BuildingUIManager
         if (BuildingUIManager.Instance != null)
             BuildingUIManager.Instance.ShowMenuForBuilding(this);
     }
 
-    // Вызов из UI-кнопки или клавиши
+    // пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ UI-пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     public void TrainUnit()
     {
+        Debug.Log("TrainUnit(); -- gameObject.activeInHierarchy:" + gameObject.activeInHierarchy);
+        Debug.Log("TrainUnit(); -- isTraining:" + isTraining);
         if (!gameObject.activeInHierarchy || isTraining)
             return;
 
-        // Проверка ресурсов
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         if (!ResourcesManager.Instance.HasEnough(woodCost, stoneCost, wheatCost))
         {
-            Debug.Log("Недостаточно ресурсов для тренировки юнита!");
+            Debug.Log("пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ!");
             return;
         }
 
-        // Списание ресурсов
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         ResourcesManager.Instance.Spend(woodCost, stoneCost, wheatCost);
 
         StartCoroutine(TrainCoroutine());
@@ -74,7 +76,7 @@ public class Barracks : MonoBehaviour
 
         yield return new WaitForSeconds(trainingTime);
 
-        // Вычисляем позицию нового юнита в сетке
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ
         int index = allUnits.Count;
         int row = index / unitsPerRow;
         int col = index % unitsPerRow;

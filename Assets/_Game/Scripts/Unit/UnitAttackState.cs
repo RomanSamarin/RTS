@@ -7,7 +7,7 @@ public class UnitAttackState : StateMachineBehaviour
 {
     NavMeshAgent agent;
     AttackController attackController;
-    public float stopAttackDistance = 3.6f;
+    public float stopAttackDistance = 2f;
     public float attackRate = 1f;
     private float attackTimer;
 

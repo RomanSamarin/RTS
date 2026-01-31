@@ -1009,7 +1009,8 @@ MonoBehaviour:
   stoneCost: 0
   wheatCost: 10
   trainingTime: 3
-  spacing: 5
+  spacing: -5
+  unitsPerRow: 5
 --- !u!1 &2650592085853310159
 GameObject:
   m_ObjectHideFlags: 0

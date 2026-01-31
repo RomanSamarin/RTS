@@ -5,7 +5,7 @@ public class UnitFollowState : StateMachineBehaviour
 {
     AttackController attackController;
     NavMeshAgent agent;
-    public float attackingDistance = 3f;
+    public float attackingDistance = 1f;
 
     public override void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
