@@ -62,6 +62,9 @@ public class ManagerGO : MonoBehaviour
                 Transform target = hit.collider.transform;
                 foreach (GameObject unit in unitsSelected)
                 {
+                    // ИСПРАВЛЕНИЕ: Проверяем, не уничтожен ли сам выделенный юнит
+                    if (unit == null) continue;
+
                     AttackController ac = unit.GetComponent<AttackController>();
                     if (ac != null)
                         ac.targetToAttack = target;
@@ -82,6 +85,9 @@ public class ManagerGO : MonoBehaviour
 
                 foreach (GameObject unit in unitsSelected)
                 {
+                    // ИСПРАВЛЕНИЕ: Проверяем, не уничтожен ли сам выделенный юнит
+                    if (unit == null) continue;
+
                     GOScript move = unit.GetComponent<GOScript>();
                     if (move != null)
                     {
@@ -106,7 +112,8 @@ public class ManagerGO : MonoBehaviour
     {
         foreach (GameObject unit in unitSelected)
         {
-            if (unit.GetComponent<AttackController>() != null)
+            // ИСПРАВЛЕНИЕ: Безопасная проверка
+            if (unit != null && unit.GetComponent<AttackController>() != null)
             {
                 return true;
             }
@@ -117,6 +124,7 @@ public class ManagerGO : MonoBehaviour
     private void SelectByClicking(GameObject unit)
     {
         DeselectAll();
+        if (unit == null) return; // Защита
         unitsSelected.Add(unit);
         TriggerSelectionIndicator(unit, true);
         EnableUnitMovement(unit, true);
@@ -124,6 +132,7 @@ public class ManagerGO : MonoBehaviour
 
     private void MultiSelect(GameObject unit)
     {
+        if (unit == null) return; // Защита
         if (!unitsSelected.Contains(unit))
         {
             unitsSelected.Add(unit);
@@ -142,6 +151,9 @@ public class ManagerGO : MonoBehaviour
     {
         foreach (var unit in unitsSelected)
         {
+            // ИСПРАВЛЕНИЕ: Не пытаемся отключить скрипты у уничтоженных объектов
+            if (unit == null) continue;
+
             EnableUnitMovement(unit, false);
             TriggerSelectionIndicator(unit, false);
         }
@@ -152,6 +164,7 @@ public class ManagerGO : MonoBehaviour
 
     private void EnableUnitMovement(GameObject unit, bool shouldMove)
     {
+        if (unit == null) return; // Защита
         var script = unit.GetComponent<GOScript>();
         if (script != null)
             script.enabled = shouldMove;
@@ -159,6 +172,7 @@ public class ManagerGO : MonoBehaviour
 
     private void TriggerSelectionIndicator(GameObject unit, bool IsVisible)
     {
+        if (unit == null) return; // Защита
         if (unit.transform.childCount > 0)
         {
             unit.transform.GetChild(0).gameObject.SetActive(IsVisible);
@@ -167,6 +181,7 @@ public class ManagerGO : MonoBehaviour
 
     public void DragSelect(GameObject unit)
     {
+        if (unit == null) return; // Защита
         if (!unitsSelected.Contains(unit))
         {
             unitsSelected.Add(unit);

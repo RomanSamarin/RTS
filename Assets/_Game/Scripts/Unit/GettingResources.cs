@@ -3,16 +3,18 @@ using UnityEngine;
 
 public class GettingResources : MonoBehaviour
 {
+    [Header("Текущий рюкзак юнита")]
     public int Wood;
     public int Stone;
     public int Wheat;
+    public int Fish;
 
-    void Start() { }
-
-    void Update() { }
-
-    public void TakeResource()
+    // Метод перекладывания ресурсов из объекта в рюкзак рабочего
+    public void TakeResource(Unit targetUnit)
     {
-        ResourcesManager.Instance.TakeResource(this);
+        Wood = targetUnit.woodReward;
+        Stone = targetUnit.stoneReward;
+        Wheat = targetUnit.wheatReward;
+        Fish = targetUnit.fishReward;
     }
 }

@@ -5,6 +5,12 @@ TagManager:
   serializedVersion: 2
   tags:
   - Enemy
+  - Sawmill
+  - Warehouse
+  - Water
+  - FishHouse
+  - Tree
+  - FishingSpot
   layers:
   - Default
   - TransparentFX

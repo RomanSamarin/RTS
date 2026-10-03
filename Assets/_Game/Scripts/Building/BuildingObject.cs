@@ -13,6 +13,7 @@ public class BuildingObject : MonoBehaviour
     public int woodCost = 50;
     public int stoneCost = 50;
     public int wheatCost = 0;
+    public int fishCost;
 
     // Счётчик коллайдеров, внутри которых мы сейчас находимся
     private int collidersOverlapping = 0; 
@@ -36,7 +37,7 @@ public class BuildingObject : MonoBehaviour
             transform.rotation *= Quaternion.Euler(0f, 90f, 0f);
         }
 
-        // 3. Попытка установить здание на ЛКМ (используем GetMouseButtonDown, чтобы избежать багов удержания)
+        // 3. Попытка установить здание на ЛКМ
         if (Input.GetMouseButtonDown(0))
         {
             // Если мы внутри другого объекта — блокируем установку
@@ -47,9 +48,9 @@ public class BuildingObject : MonoBehaviour
             }
 
             // Проверяем и списываем ресурсы
-            if (ResourcesManager.Instance != null && ResourcesManager.Instance.HasEnough(woodCost, stoneCost, wheatCost))
+            if (ResourcesManager.Instance != null && ResourcesManager.Instance.HasEnough(woodCost, stoneCost, wheatCost, fishCost))
             {
-                ResourcesManager.Instance.Spend(woodCost, stoneCost, wheatCost);
+                ResourcesManager.Instance.Spend(woodCost, stoneCost, wheatCost,fishCost);
                 
                 // Делаем коллайдер твердым (не триггером), чтобы другие здания теперь натыкались на него
                 Collider col = GetComponent<Collider>();
@@ -69,7 +70,13 @@ public class BuildingObject : MonoBehaviour
     // Срабатывает, когда призрачное здание наезжает на чужой коллайдер
     private void OnTriggerEnter(Collider other)
     {
-        // Игнорируем землю (проверяем по слою), считаем только другие объекты
+        // ИСПРАВЛЕНИЕ: Игнорируем любые невидимые триггеры (например, большие круги атаки юнитов)
+        if (other.isTrigger) 
+        {
+            return;
+        }
+
+        // Игнорируем землю (проверяем по слою), считаем только твердые объекты
         if (((1 << other.gameObject.layer) & GroundLayer) == 0)
         {
             collidersOverlapping++;
@@ -80,6 +87,12 @@ public class BuildingObject : MonoBehaviour
     // Срабатывает, когда призрачное здание съезжает с чужого коллайдера
     private void OnTriggerExit(Collider other)
     {
+        // ИСПРАВЛЕНИЕ: Точно так же игнорируем триггеры при выходе
+        if (other.isTrigger) 
+        {
+            return;
+        }
+
         if (((1 << other.gameObject.layer) & GroundLayer) == 0)
         {
             collidersOverlapping = Mathf.Max(0, collidersOverlapping - 1);

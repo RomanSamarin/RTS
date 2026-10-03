@@ -9,11 +9,13 @@ namespace _Game.Scripts.UI
 
         [SerializeField] private int wood = 0;
         [SerializeField] private int stone = 0;
-        [SerializeField] private int wheat = 0;
+        public int wheat = 0;
+        [SerializeField] private int fish = 0;
 
         public TMP_Text woodText;
         public TMP_Text stoneText;
         public TMP_Text wheatText;
+        public TMP_Text fishText;
 
         private void Awake()
         {
@@ -30,6 +32,7 @@ namespace _Game.Scripts.UI
             wood += res.Wood;
             stone += res.Stone;
             wheat += res.Wheat;
+            fish += res.Fish;
             UpdateUI();
         }
 
@@ -40,18 +43,18 @@ namespace _Game.Scripts.UI
             if (wheatText != null) wheatText.text = wheat.ToString();
         }
 
-        // Проверка ресурсов для казармы
-        public bool HasEnough(int w, int s, int wh)
+        public bool HasEnough(int w, int s, int wh , int f)
         {
-            return wood >= w && stone >= s && wheat >= wh;
+            return wood >= w && stone >= s && wheat >= wh && fish >= f;
         }
 
-        // Потратить ресурсы
-        public void Spend(int w, int s, int wh)
+        public void Spend(int w, int s, int wh, int f)
         {
             wood -= w;
             stone -= s;
             wheat -= wh;
+            fish -= f;
+
             UpdateUI();
         }
     }

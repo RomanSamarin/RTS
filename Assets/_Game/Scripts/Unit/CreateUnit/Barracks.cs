@@ -4,7 +4,7 @@ using UnityEngine;
 using _Game.Scripts.UI;
 
 // Добавили реализацию интерфейса ISelectable
-public class Barracks : MonoBehaviour, ISelectable 
+public class Barracks : MonoBehaviour 
 {
     [Header("Настройки")]
     public GameObject objectToSpawn; 
@@ -15,6 +15,7 @@ public class Barracks : MonoBehaviour, ISelectable
     public int woodCost = 50;
     public int stoneCost = 0;
     public int wheatCost = 20;
+    public int fishCost = 20;
 
     [Header("UI")]
     public GameObject UIkazarma; // Уникальное UI для конкретно этой казармы
@@ -30,12 +31,14 @@ public class Barracks : MonoBehaviour, ISelectable
 
     public void OnButtonSpawnUnit()
     {
+        Debug.Log("Нажата кнопка");
         if (objectToSpawn == null) return;
 
-        if (ResourcesManager.Instance != null && ResourcesManager.Instance.HasEnough(woodCost, stoneCost, wheatCost))
+        if (ResourcesManager.Instance != null && ResourcesManager.Instance.HasEnough(woodCost, stoneCost, wheatCost, fishCost))
         {
-            ResourcesManager.Instance.Spend(woodCost, stoneCost, wheatCost);
+            ResourcesManager.Instance.Spend(woodCost, stoneCost, wheatCost, fishCost);
             unitQueue.Enqueue(objectToSpawn);
+            
 
             if (!isTraining)
             {
@@ -61,7 +64,7 @@ public class Barracks : MonoBehaviour, ISelectable
         isTraining = false;
     }
 
-    // Эти методы теперь автоматически вызываются менеджером
+    
     public void Select()
     {
         if (UIkazarma != null) UIkazarma.SetActive(true);

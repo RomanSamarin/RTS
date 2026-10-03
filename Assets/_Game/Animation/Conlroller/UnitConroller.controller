@@ -313,7 +313,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e0a9138c37b8a2049b74de8d90a26279, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  attackingDistance: 3
+  stopFollowDistance: 2
 --- !u!114 &8396726025709901697
 MonoBehaviour:
   m_ObjectHideFlags: 1

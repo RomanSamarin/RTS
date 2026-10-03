@@ -1,50 +1,73 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 
 public class UnitFollowState : StateMachineBehaviour
 {
-    AttackController attackController;
     NavMeshAgent agent;
-    public float attackingDistance = 1f;
+    AttackController attackController;
+    GOScript goScript;
+    
+    public float stopFollowDistance = 2f;
 
-    public override void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    override public void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
-        attackController = animator.transform.GetComponent<AttackController>();
-        agent = animator.transform.GetComponent<NavMeshAgent>();
+        agent = animator.GetComponent<NavMeshAgent>();
+        attackController = animator.GetComponent<AttackController>();
+        
+        if (animator != null)
+        {
+            goScript = animator.GetComponent<GOScript>();
+            if (goScript == null) goScript = animator.GetComponentInParent<GOScript>();
+        }
     }
 
-    public override void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
-        GOScript moveScript = animator.transform.GetComponent<GOScript>();
-
-        if (moveScript != null && moveScript.isCommandToMove)
-        {
-            if (attackController != null)
-                attackController.targetToAttack = null;
-
-            animator.SetBool("IsFollowing", false);
-            return;
-        }
-
-        if (attackController == null || attackController.targetToAttack == null)
+        // Проверка ручного приказа на перемещение игроком
+        if (goScript != null && goScript.isCommandToMove == true)
         {
             animator.SetBool("IsFollowing", false);
             return;
         }
 
-        agent.SetDestination(attackController.targetToAttack.position);
-        animator.transform.LookAt(attackController.targetToAttack);
-
-        float distanceFromTarget = Vector3.Distance(attackController.targetToAttack.position, animator.transform.position);
-
-        if (distanceFromTarget < attackingDistance)
+        if (attackController != null && attackController.targetToAttack != null)
         {
-            agent.SetDestination(animator.transform.position);
-            animator.SetBool("isAttacking", true);
+            // Ведем агента к цели
+            if (agent != null && agent.isOnNavMesh)
+            {
+                agent.SetDestination(attackController.targetToAttack.position);
+            }
+
+            // Вычисляем дистанцию
+            float distanceFromTarget = Vector3.Distance(attackController.targetToAttack.position, animator.transform.position);
+
+            // Проверяем, к какому объекту подошел юнит (Дерево/Враг ИЛИ Водоем)
+            bool isEnemyOrTree = attackController.targetToAttack.CompareTag("Enemy");
+            bool isFishingSpot = attackController.targetToAttack.CompareTag("FishingSpot");
+
+            // Если цель имеет один из нужных тегов и мы подошли на дистанцию взаимодействия
+            if ((isEnemyOrTree || isFishingSpot) && distanceFromTarget <= stopFollowDistance)
+            {
+                if (agent != null && agent.isOnNavMesh)
+                {
+                    agent.ResetPath(); // Останавливаем навигацию
+                }
+                
+                // Включаем переход в Attack State
+                animator.SetBool("isAttacking", true); 
+            }
         }
         else
         {
-            animator.SetBool("isAttacking", false);
+            // Если цель потеряна, сбрасываем следование
+            animator.SetBool("IsFollowing", false);
         }
+    }
+
+    override public void OnStateExit(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
+    {
+        // Базовый выход из состояния
     }
 }

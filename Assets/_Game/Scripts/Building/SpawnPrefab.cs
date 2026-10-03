@@ -17,7 +17,7 @@ public class BuildManager : MonoBehaviour
 
         // Проверяем ресурсы ТОЛЬКО для старта строительства (перед тем как дать объект в руку)
         if (ResourcesManager.Instance != null && 
-            ResourcesManager.Instance.HasEnough(buildingScript.woodCost, buildingScript.stoneCost, buildingScript.wheatCost))
+            ResourcesManager.Instance.HasEnough(buildingScript.woodCost, buildingScript.stoneCost, buildingScript.wheatCost, buildingScript.fishCost))
         {
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
             RaycastHit hit;
