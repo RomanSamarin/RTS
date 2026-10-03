@@ -587,7 +587,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
   m_ReferenceResolution: {x: 1920, y: 1080}
@@ -888,37 +888,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 341031345}
   m_CullTransparentMesh: 1
---- !u!1 &383344643
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 383344645}
-  m_Layer: 0
-  m_Name: RoadBuilder
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &383344645
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 383344643}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 138.47243, y: 3.088202, z: 154.47575}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &436193693 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 3513065292091699753, guid: 3ba6fcea3159c1440a29d94ac72031dd, type: 3}
@@ -2497,15 +2466,15 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 4716715914849942385, guid: 2c47eaaffda056e4cbd6c1f988b2ac9a, type: 3}
       propertyPath: m_AnchorMax.x
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4716715914849942385, guid: 2c47eaaffda056e4cbd6c1f988b2ac9a, type: 3}
       propertyPath: m_AnchorMax.y
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4716715914849942385, guid: 2c47eaaffda056e4cbd6c1f988b2ac9a, type: 3}
       propertyPath: m_AnchorMin.x
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5324742786231954033, guid: 2c47eaaffda056e4cbd6c1f988b2ac9a, type: 3}
       propertyPath: Wood
@@ -2517,7 +2486,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8346593236475366733, guid: 2c47eaaffda056e4cbd6c1f988b2ac9a, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 175.11
+      value: 175.69
       objectReference: {fileID: 0}
     - target: {fileID: 8346593236475366733, guid: 2c47eaaffda056e4cbd6c1f988b2ac9a, type: 3}
       propertyPath: m_LocalPosition.y
@@ -5281,7 +5250,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   moveSpeed: 10
   fastMultiplier: 2
-  rotationSpeed: 1
+  rotationSpeed: 50
   minPitch: 20
   maxPitch: 65
   zoomSpeed: 500
@@ -5467,8 +5436,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 1}
   m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: 0, y: -30}
-  m_SizeDelta: {x: 500, y: 50}
+  m_AnchoredPosition: {x: 0, y: -20}
+  m_SizeDelta: {x: 1920, y: 40}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &2075873803
 MonoBehaviour:
@@ -5483,14 +5452,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 0.0627451, g: 0.11764706, b: 0.15294118, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: -1366453485, guid: f3988f077eb00044c8723c950312f0e1, type: 3}
+  m_Sprite: {fileID: 0}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -5742,4 +5711,3 @@ SceneRoots:
   - {fileID: 1285008988}
   - {fileID: 1751085420}
   - {fileID: 1036324920}
-  - {fileID: 383344645}
