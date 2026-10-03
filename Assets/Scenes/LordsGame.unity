@@ -216,15 +216,15 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 4716715914849942385, guid: 2c47eaaffda056e4cbd6c1f988b2ac9a, type: 3}
       propertyPath: m_AnchorMax.x
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4716715914849942385, guid: 2c47eaaffda056e4cbd6c1f988b2ac9a, type: 3}
       propertyPath: m_AnchorMax.y
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4716715914849942385, guid: 2c47eaaffda056e4cbd6c1f988b2ac9a, type: 3}
       propertyPath: m_AnchorMin.x
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5324742786231954033, guid: 2c47eaaffda056e4cbd6c1f988b2ac9a, type: 3}
       propertyPath: Wood
@@ -396,15 +396,15 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 736641318226641248, guid: d7fd6ce8448fd0d44b72c4397180a214, type: 3}
       propertyPath: m_AnchorMax.x
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 736641318226641248, guid: d7fd6ce8448fd0d44b72c4397180a214, type: 3}
       propertyPath: m_AnchorMax.y
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 736641318226641248, guid: d7fd6ce8448fd0d44b72c4397180a214, type: 3}
       propertyPath: m_AnchorMin.x
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3721267205315622885, guid: d7fd6ce8448fd0d44b72c4397180a214, type: 3}
       propertyPath: m_AnchorMax.x
