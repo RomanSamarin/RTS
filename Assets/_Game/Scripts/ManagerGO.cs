@@ -33,6 +33,29 @@ public class ManagerGO : MonoBehaviour
     {
         RaycastHit hit;
         Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+        if (groundMarker != null && groundMarker.activeSelf)
+        {
+            bool anyUnitStillMoving = false;
+            foreach (GameObject unit in unitsSelected)
+            {
+                if (unit == null) continue;
+                GOScript move = unit.GetComponent<GOScript>();
+                if (move != null && move.agent != null)
+                {
+                    if (move.agent.pathPending || move.agent.remainingDistance > move.agent.stoppingDistance)
+                    {
+                        anyUnitStillMoving = true;
+                        break;
+                    }
+                }
+    }
+    // Если абсолютно все выделенные юниты остановились — выключаем маркер
+    if (!anyUnitStillMoving)
+    {
+        groundMarker.SetActive(false);
+    }
+}
+
 
         // ЛКМ — выбор юнитов
         if (Input.GetMouseButtonDown(0))

@@ -27,31 +27,17 @@ public class GOScript : MonoBehaviour
     }
 
     private void Update()
+{
+    // 1. Логика изменения скорости на дороге (оставляем без изменений)
+    if (agent != null && agent.isOnNavMesh)
     {
-        
-        if (Input.GetMouseButtonDown(1))
+        NavMeshHit navMeshHit; 
+        if (agent.SamplePathPosition(NavMesh.AllAreas, 0.0f, out navMeshHit))
         {
-            RaycastHit mouseHit; // 
-            Ray ray = camera.ScreenPointToRay(Input.mousePosition);
-
-            if (Physics.Raycast(ray, out mouseHit, Mathf.Infinity, Ground))
+            int roadAreaIndex = NavMesh.GetAreaFromName("Road");
+            if (roadAreaIndex != -1)
             {
-                isCommandToMove = true;
-                agent.SetDestination(mouseHit.point);
-                animator.SetBool("isMoving", true);
-                Debug.Log("GrounMarker avaible");
-            }
-        } 
-
-        if (agent != null && agent.isOnNavMesh)
-        {
-            NavMeshHit navMeshHit; 
-            
-            if (agent.SamplePathPosition(NavMesh.AllAreas, 0.0f, out navMeshHit))
-            {
-                int roadAreaIndex = NavMesh.GetAreaFromName("Road");
                 bool isOnRoad = (navMeshHit.mask & (1 << roadAreaIndex)) != 0;
-
                 if (isOnRoad)
                 {
                     agent.speed = baseSpeed * 1.5f; 
@@ -62,18 +48,28 @@ public class GOScript : MonoBehaviour
                 }
             }
         }
-        
-        if (agent != null && (!agent.hasPath || agent.remainingDistance <= agent.stoppingDistance))
-        {
-            isCommandToMove = false;
-            animator.SetBool("isMoving", false);
-            if (ManagerGO.Instance != null && ManagerGO.Instance.groundMarker != null)
-    {
-        ManagerGO.Instance.groundMarker.SetActive(false);
     }
-        } else
+    
+    // 2. УПРАВЛЕНИЕ АНИМАЦИЕЙ И ФЛАГОМ ДВИЖЕНИЯ
+    // Проверяем реальное физическое движение агента
+    if (agent != null && agent.hasPath && agent.velocity.sqrMagnitude > 0.01f)
+    {
+        isCommandToMove = true;
+        if (animator != null)
         {
             animator.SetBool("isMoving", true);
         }
     }
+    // Если агент дошел до цели и остановился
+    else if (agent != null && !agent.pathPending && agent.remainingDistance <= agent.stoppingDistance)
+    {
+        isCommandToMove = false;
+        if (animator != null)
+        {
+            animator.SetBool("isMoving", false);
+        }
+    }
+}
+
+
 }

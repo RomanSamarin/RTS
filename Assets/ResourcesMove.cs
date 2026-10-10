@@ -53,12 +53,12 @@ public class ResourcesMove : MonoBehaviour
             if (attackController != null && attackController.targetToAttack == null) FindAndGoToClosestTree();
         }
 
+        // ИСПРАВЛЕНО: Носильщик теперь ищет ЛЮБОЕ здание с ресурсами (лесопилку или рыболовню)
         if (role == UnitRole.Carrier)
         {
-            if (attackController != null && attackController.targetToAttack == null) FindAndGoToActiveSawmill();
+            if (attackController != null && attackController.targetToAttack == null) FindAndGoToActiveResourceBuilding();
         }
 
-        // Ищем по новому тегу FishingSpot
         if (role == UnitRole.Fisher)
         {
             if (attackController != null && attackController.targetToAttack == null) FindAndGoToClosestFishingSpot();
@@ -131,7 +131,6 @@ public class ResourcesMove : MonoBehaviour
 
     private void FindAndGoToClosestFishingSpot()
     {
-        // ИЩЕМ ПО ТЕГУ FishingSpot
         GameObject[] spots = GameObject.FindGameObjectsWithTag("FishingSpot");
         GameObject closestSpot = null;
         float closestDistance = Mathf.Infinity;
@@ -157,12 +156,14 @@ public class ResourcesMove : MonoBehaviour
         }
     }
 
-    private void FindAndGoToActiveSawmill()
+    // ИСПРАВЛЕНО: Умный поиск работы для Носильщика (ищет ближайшее здание, где ЕСТЬ ресурсы)
+    private void FindAndGoToActiveResourceBuilding()
     {
-        GameObject[] sawmills = GameObject.FindGameObjectsWithTag("Sawmill");
-        GameObject targetSawmill = null;
+        GameObject targetBuilding = null;
         float closestDistance = Mathf.Infinity;
 
+        // 1. Проверяем лесопилки
+        GameObject[] sawmills = GameObject.FindGameObjectsWithTag("Sawmill");
         foreach (GameObject sawmillObj in sawmills)
         {
             Sawmill sawmillScript = sawmillObj.GetComponent<Sawmill>();
@@ -172,14 +173,31 @@ public class ResourcesMove : MonoBehaviour
                 if (distance < closestDistance)
                 {
                     closestDistance = distance;
-                    targetSawmill = sawmillObj;
+                    targetBuilding = sawmillObj;
                 }
             }
         }
 
-        if (targetSawmill != null && attackController != null)
+        // 2. Проверяем хижины рыбаков (FishHouse)
+        GameObject[] fishHouses = GameObject.FindGameObjectsWithTag("FishHouse");
+        foreach (GameObject fishHouseObj in fishHouses)
         {
-            attackController.targetToAttack = targetSawmill.transform;
+            Fishing fishingScript = fishHouseObj.GetComponent<Fishing>();
+            if (fishingScript != null && fishingScript.storeFish > 0)
+            {
+                float distance = Vector3.Distance(transform.position, fishHouseObj.transform.position);
+                if (distance < closestDistance)
+                {
+                    closestDistance = distance;
+                    targetBuilding = fishHouseObj;
+                }
+            }
+        }
+
+        // Отправляем носильщика к найденному зданию
+        if (targetBuilding != null && attackController != null)
+        {
+            attackController.targetToAttack = targetBuilding.transform;
             if (_animator != null) _animator.SetBool("IsFollowing", true);
         }
     }
@@ -226,7 +244,7 @@ public class ResourcesMove : MonoBehaviour
             FindAndGoToClosestFishingSpot();
         }
 
-        // 3. НОСИЛЬЩИК пришел на ЛЕСОПИЛКУ
+        // 3. НОСИЛЬЩИК пришел на ЛЕСОПИЛКУ (Забирает дерево)
         if (role == UnitRole.Carrier && !hasResourcesInPocket && other.CompareTag("Sawmill"))
         {
             Sawmill sawmill = other.GetComponent<Sawmill>();
@@ -239,13 +257,25 @@ public class ResourcesMove : MonoBehaviour
             }
         }
 
-        // 4. НОСИЛЬЩИК пришел на ГЛАВНЫЙ СКЛАД
+        // 4. НОСИЛЬЩИК пришел на ГЛАВНЫЙ СКЛАД (Сдает любые ресурсы)
         if (role == UnitRole.Carrier && hasResourcesInPocket && other.CompareTag("Warehouse"))
         {
             if (ResourcesManager.Instance != null && _gettingResources != null)
             {
                 ResourcesManager.Instance.TakeResource(_gettingResources); 
                 ClearPocket();
+            }
+        }
+
+        // 5. НОСИЛЬЩИК пришел в РЫБОЛОВНЮ (Забирает рыбу)
+        if (role == UnitRole.Carrier && !hasResourcesInPocket && other.CompareTag("FishHouse"))
+        {
+            Fishing fishing = other.GetComponent<Fishing>();
+            if (fishing != null && fishing.storeFish > 0 && _gettingResources != null)
+            {                _gettingResources.Fish = fishing.ExtractFish(MaxUnitResources);
+                hasResourcesInPocket = true;
+                if (attackController != null) attackController.targetToAttack = null;
+                GoToMainWarehouse();
             }
         }
     }
@@ -257,7 +287,7 @@ public class ResourcesMove : MonoBehaviour
             _gettingResources.Wood = 0;
             _gettingResources.Stone = 0;
             _gettingResources.Wheat = 0;
-            _gettingResources.Fish = 0; 
+            _gettingResources.Fish = 0;
         }
         hasResourcesInPocket = false;
         if (attackController != null) attackController.targetToAttack = null;
@@ -269,3 +299,4 @@ public class ResourcesMove : MonoBehaviour
         }
     }
 }
+
