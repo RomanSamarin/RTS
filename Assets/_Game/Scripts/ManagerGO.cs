@@ -13,7 +13,7 @@ public class ManagerGO : MonoBehaviour
     public GameObject groundMarker;
     public LayerMask attackable;
     public bool attackCursorVisible;
-
+    public GOScript GOScript;
     private Camera cam;
 
     private void Awake()

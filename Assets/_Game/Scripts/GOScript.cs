@@ -9,17 +9,20 @@ public class GOScript : MonoBehaviour
     public NavMeshAgent agent;
     public LayerMask Ground;
     public bool isCommandToMove;
+    Animator animator;
+    DirectionIndicator directionIndicator;
 
-    private float baseSpeed; // Создали переменную для хранения стартовой скорости
-
+    private float baseSpeed; 
     private void Start()
     {
         camera = Camera.main;
+        directionIndicator = GetComponent<DirectionIndicator>();
         agent = GetComponent<NavMeshAgent>();
+        animator = GetComponent<Animator>();
         
         if (agent != null)
         {
-            baseSpeed = agent.speed; // Запоминаем скорость, настроенную в инспекторе юнита
+            baseSpeed = agent.speed; 
         }
     }
 
@@ -35,14 +38,15 @@ public class GOScript : MonoBehaviour
             {
                 isCommandToMove = true;
                 agent.SetDestination(mouseHit.point);
+                animator.SetBool("isMoving", true);
+                Debug.Log("GrounMarker avaible");
             }
         } 
 
         if (agent != null && agent.isOnNavMesh)
         {
-            NavMeshHit navMeshHit; // ИСПРАВЛЕНО: Переименовали в navMeshHit
+            NavMeshHit navMeshHit; 
             
-            // Считываем информацию о текущем полигоне под ногами юнита
             if (agent.SamplePathPosition(NavMesh.AllAreas, 0.0f, out navMeshHit))
             {
                 int roadAreaIndex = NavMesh.GetAreaFromName("Road");
@@ -50,11 +54,11 @@ public class GOScript : MonoBehaviour
 
                 if (isOnRoad)
                 {
-                    agent.speed = baseSpeed * 1.5f; // Увеличиваем скорость на 50%
+                    agent.speed = baseSpeed * 1.5f; 
                 }
                 else
                 {
-                    agent.speed = baseSpeed; // Возвращаем базовую скорость
+                    agent.speed = baseSpeed; 
                 }
             }
         }
@@ -62,6 +66,14 @@ public class GOScript : MonoBehaviour
         if (agent != null && (!agent.hasPath || agent.remainingDistance <= agent.stoppingDistance))
         {
             isCommandToMove = false;
+            animator.SetBool("isMoving", false);
+            if (ManagerGO.Instance != null && ManagerGO.Instance.groundMarker != null)
+    {
+        ManagerGO.Instance.groundMarker.SetActive(false);
+    }
+        } else
+        {
+            animator.SetBool("isMoving", true);
         }
     }
 }
