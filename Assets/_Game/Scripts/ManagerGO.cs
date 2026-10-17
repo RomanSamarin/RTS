@@ -78,8 +78,8 @@ public class ManagerGO : MonoBehaviour
         // ПКМ — атака или движение
         if (Input.GetMouseButtonDown(1) && unitsSelected.Count > 0)
         {
-            // Сначала проверяем врагов
-            if (Physics.Raycast(ray, out hit, Mathf.Infinity, attackable))
+            // Сначала проверяем врагов (но НЕ свои склады и ресурсные объекты — приказ по ним = обычное движение)
+            if (Physics.Raycast(ray, out hit, Mathf.Infinity, attackable) && !IsResourceTarget(hit.collider.gameObject))
             {
                 attackCursorVisible = true;
 
@@ -166,6 +166,15 @@ public class ManagerGO : MonoBehaviour
             }
         }
         return false;
+    }
+
+    // Наши ресурсные объекты (жила, склады) — не боевые цели: ПКМ по ним = команда движения
+    private bool IsResourceTarget(GameObject obj)
+    {
+        if (obj == null) return false;
+        return obj.CompareTag("Sawmill") || obj.CompareTag("Warehouse")
+               || obj.CompareTag("FishHouse") || obj.CompareTag("StoneHouse")
+               || obj.CompareTag("StoneQuarry");
     }
 
     private void SelectByClicking(GameObject unit)

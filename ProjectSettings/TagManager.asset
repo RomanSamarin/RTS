@@ -11,6 +11,8 @@ TagManager:
   - FishHouse
   - Tree
   - FishingSpot
+  - StoneQuarry
+  - StoneHouse
   layers:
   - Default
   - TransparentFX

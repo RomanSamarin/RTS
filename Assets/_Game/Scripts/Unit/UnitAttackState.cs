@@ -48,6 +48,21 @@ public class UnitAttackState : StateMachineBehaviour
                 return;
             }
 
+            // Определяем, ЧТО это за цель: боевой юнит, рыба или жила камня.
+            Unit targetUnit = attackController.targetToAttack.GetComponent<Unit>();
+            FishingSpot targetWater = attackController.targetToAttack.GetComponent<FishingSpot>();
+            StoneQuarry targetQuarry = attackController.targetToAttack.GetComponent<StoneQuarry>();
+
+            bool isAttackableTarget = (targetUnit != null) || (targetWater != null) || (targetQuarry != null);
+
+            // СКЛАДЫ И ДРУГИЕ ЗДАНИЯ (Sawmill, StoneHouse, Warehouse, FishHouse) — НЕ боевые цели!
+            // Юнит не должен бить склад: он просто продолжает ИДТИ к нему, чтобы сдать/забрать ресурс.
+            if (!isAttackableTarget)
+            {
+                animator.SetBool("isAttacking", false);
+                return;
+            }
+
             LookAtTarget();
             
             if (attackTimer <= 0)
@@ -66,11 +81,9 @@ public class UnitAttackState : StateMachineBehaviour
                 return;
             }
 
-            Unit targetUnit = attackController.targetToAttack.GetComponent<Unit>();
-            FishingSpot targetWater = attackController.targetToAttack.GetComponent<FishingSpot>();
-            
             bool isTargetDead = (targetUnit != null && targetUnit.unitHealth <= 0) || 
-                                (targetWater != null && targetWater.fishHealth <= 0);
+                                (targetWater != null && targetWater.fishHealth <= 0) ||
+                                (targetQuarry != null && (targetQuarry.stoneHealth <= 0 || targetQuarry.currentStoneLeft <= 0));
 
             if (isTargetDead)
             {
@@ -114,6 +127,13 @@ public class UnitAttackState : StateMachineBehaviour
             if (targetWater != null)
             {
                 targetWater.TakeDamage(1, attackController.gameObject); 
+                return;
+            }
+
+            StoneQuarry targetQuarry = attackController.targetToAttack.GetComponent<StoneQuarry>();
+            if (targetQuarry != null)
+            {
+                targetQuarry.TakeDamage(1, attackController.gameObject); // каждый удар кирки = 1 секунда добычи
                 return;
             }
         }

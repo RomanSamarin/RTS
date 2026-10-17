@@ -43,12 +43,19 @@ public class UnitFollowState : StateMachineBehaviour
             // Вычисляем дистанцию
             float distanceFromTarget = Vector3.Distance(attackController.targetToAttack.position, animator.transform.position);
 
-            // Проверяем, к какому объекту подошел юнит (Дерево/Враг ИЛИ Водоем)
+            // Проверяем, к какому объекту подошел юнит (Дерево/Враг, Водоем ИЛИ Жила камня)
             bool isEnemyOrTree = attackController.targetToAttack.CompareTag("Enemy");
             bool isFishingSpot = attackController.targetToAttack.CompareTag("FishingSpot");
 
+            // Жила камня — рабочая цель ТОЛЬКО для каменщика.
+            // Носильщик с той же целью (жила) должен пройти ВНУТРЬ её триггера, чтобы забрать камень из кучи.
+            var resourcesMoveOnUnit = animator.GetComponent<ResourcesMove>();
+            bool isStoneQuarryMine = attackController.targetToAttack.CompareTag("StoneQuarry")
+                                     && resourcesMoveOnUnit != null
+                                     && resourcesMoveOnUnit.role == ResourcesMove.UnitRole.StoneMason;
+
             // Если цель имеет один из нужных тегов и мы подошли на дистанцию взаимодействия
-            if ((isEnemyOrTree || isFishingSpot) && distanceFromTarget <= stopFollowDistance)
+            if ((isEnemyOrTree || isFishingSpot || isStoneQuarryMine) && distanceFromTarget <= stopFollowDistance)
             {
                 if (agent != null && agent.isOnNavMesh)
                 {
