@@ -2,21 +2,35 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-
+using UnityEngine.AI;
 public class Unit : MonoBehaviour
 {
     public float unitHealth;
     public float unitMaxHealth;
     public HealthTracker heathTracker;
+    public Animator animator;
+    public NavMeshAgent navMeshAgent;
 
     [Header("Настройки выпадающих ресурсов")]
     public int woodReward;
     public int stoneReward;
     public int wheatReward;
     public int fishReward;
+    void Update()
+    {
+         if (navMeshAgent.remainingDistance > navMeshAgent.stoppingDistance)
+                    {
+                        animator.SetBool("isMoving", true);
+                    }
+                    else
+                    {
+                        animator.SetBool("isMoving", false);
+                    }
+    }
 
     void Start()
     {
+        animator = GetComponent<Animator>();
         if (ManagerGO.Instance != null && ManagerGO.Instance.allUnitsList != null)
         {
             ManagerGO.Instance.allUnitsList.Add(gameObject);

@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
@@ -9,7 +9,6 @@ public class GOScript : MonoBehaviour
     public NavMeshAgent agent;
     public LayerMask Ground;
     public bool isCommandToMove;
-    Animator animator;
     DirectionIndicator directionIndicator;
 
     private float baseSpeed; 
@@ -18,7 +17,6 @@ public class GOScript : MonoBehaviour
         camera = Camera.main;
         directionIndicator = GetComponent<DirectionIndicator>();
         agent = GetComponent<NavMeshAgent>();
-        animator = GetComponent<Animator>();
         
         if (agent != null)
         {
@@ -27,17 +25,31 @@ public class GOScript : MonoBehaviour
     }
 
     private void Update()
-{
-    // 1. Логика изменения скорости на дороге (оставляем без изменений)
-    if (agent != null && agent.isOnNavMesh)
     {
-        NavMeshHit navMeshHit; 
-        if (agent.SamplePathPosition(NavMesh.AllAreas, 0.0f, out navMeshHit))
+        
+        if (Input.GetMouseButtonDown(1))
         {
-            int roadAreaIndex = NavMesh.GetAreaFromName("Road");
-            if (roadAreaIndex != -1)
+            RaycastHit mouseHit; // 
+            Ray ray = camera.ScreenPointToRay(Input.mousePosition);
+
+            if (Physics.Raycast(ray, out mouseHit, Mathf.Infinity, Ground))
             {
+                isCommandToMove = true;
+                agent.SetDestination(mouseHit.point);
+                Debug.Log("GrounMarker avaible");
+                directionIndicator.DrawLine(mouseHit);
+            }
+        } 
+
+        if (agent != null && agent.isOnNavMesh)
+        {
+            NavMeshHit navMeshHit; 
+            
+            if (agent.SamplePathPosition(NavMesh.AllAreas, 0.0f, out navMeshHit))
+            {
+                int roadAreaIndex = NavMesh.GetAreaFromName("Road");
                 bool isOnRoad = (navMeshHit.mask & (1 << roadAreaIndex)) != 0;
+
                 if (isOnRoad)
                 {
                     agent.speed = baseSpeed * 1.5f; 
@@ -48,28 +60,15 @@ public class GOScript : MonoBehaviour
                 }
             }
         }
-    }
-    
-    // 2. УПРАВЛЕНИЕ АНИМАЦИЕЙ И ФЛАГОМ ДВИЖЕНИЯ
-    // Проверяем реальное физическое движение агента
-    if (agent != null && agent.hasPath && agent.velocity.sqrMagnitude > 0.01f)
-    {
-        isCommandToMove = true;
-        if (animator != null)
-        {
-            animator.SetBool("isMoving", true);
-        }
-    }
-    // Если агент дошел до цели и остановился
-    else if (agent != null && !agent.pathPending && agent.remainingDistance <= agent.stoppingDistance)
-    {
-        isCommandToMove = false;
-        if (animator != null)
-        {
-            animator.SetBool("isMoving", false);
-        }
-    }
-}
+        
+        // Замените ваш нижний блок if-else на этот
+                // Проверяем: если путь еще считается, то ничего не делаем и ждем
+                    // Ваша исходная логика проверки остановки
+                    if (!agent.hasPath || agent.remainingDistance <= agent.stoppingDistance)
+                    {
+                        isCommandToMove = false;
+                
+                    }
 
-
+    }
 }
