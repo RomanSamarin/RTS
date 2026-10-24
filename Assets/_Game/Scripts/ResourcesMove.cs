@@ -330,11 +330,16 @@ public class ResourcesMove : MonoBehaviour
             }
         }
 
-        // 2. РЫБАК пришел в РЫБОЛОВНЮ
+        // 2. РЫБАК пришел в РЫБОЛОВНЮ (сдает улов в хранилище рыбы)
         if (role == UnitRole.Fisher && hasResourcesInPocket && building.CompareTag("FishHouse"))
         {
+            Fishing fishing = building.GetComponent<Fishing>();
+            if (fishing != null && _gettingResources != null)
+            {
+                fishing.AddFish(_gettingResources.Fish);
+            }
             ClearPocket();
-            Debug.Log("<color=cyan>Успех!</color> Рыбак сдал улов в Рыболовню."); // ИСПРАВЛЕНО: закрыт тег </color>
+            Debug.Log("<color=cyan>Успех!</color> Рыбак сдал улов в Рыболовню.");
             FindAndGoToClosestFishingSpot();
             processed = true;
         }

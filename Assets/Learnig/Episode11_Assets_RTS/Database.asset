@@ -16,11 +16,37 @@ MonoBehaviour:
   - <Name>k__BackingField: Barracks
     <ID>k__BackingField: 0
     description: 
-    <Size>k__BackingField: {x: 1, y: 1}
-    <Prefab>k__BackingField: {fileID: 3468117111517760135, guid: acb5245abe556354da677b53d4343cc1, type: 3}
+    <Size>k__BackingField: {x: 5, y: 5}
+    <Prefab>k__BackingField: {fileID: 1135194445272333310, guid: 97ad70686f95b984e808d416f335bc82, type: 3}
     <requirements>k__BackingField:
     - resource: Wheat
       amount: 40
+    - resource: Stone
+      amount: 50
+    - resource: Wood
+      amount: 50
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: SawMill
+    <ID>k__BackingField: 1
+    description: 
+    <Size>k__BackingField: {x: 5, y: 5}
+    <Prefab>k__BackingField: {fileID: 7582387407367415735, guid: 3237bef27c688c24c8b864de4f9a8645, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wheat
+      amount: 0
+    - resource: Stone
+      amount: 50
+    - resource: Wood
+      amount: 50
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: Sawmill
+    <ID>k__BackingField: 2
+    description: 
+    <Size>k__BackingField: {x: 2, y: 2}
+    <Prefab>k__BackingField: {fileID: 7582387407367415735, guid: 3237bef27c688c24c8b864de4f9a8645, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wheat
+      amount: 0
     - resource: Stone
       amount: 50
     - resource: Wood

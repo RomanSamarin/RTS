@@ -4,25 +4,25 @@ using UnityEngine;
 
 public class HousesScript : MonoBehaviour
 {
-    // Start is called before the first frame update
     public int UnitHouse;
+
+    // Добавляем лимит ровно один раз и запоминаем это,
+    // чтобы при уничтожении дома снять ровно столько же.
+    private bool housingRegistered;
+
     void Start()
     {
-        UnitManager.Instance.UnitMax +=UnitHouse;
-        
+        if (UnitManager.Instance == null) return;
+
+        UnitManager.Instance.UnitMax += UnitHouse;
+        housingRegistered = true;
     }
 
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
-    void Awake()
-    {
-        UnitManager.Instance.UnitMax +=UnitHouse;
-    }
     void OnDestroy()
     {
-        UnitManager.Instance.UnitMax -=UnitHouse;
+        if (!housingRegistered) return;
+        if (UnitManager.Instance == null) return;
+
+        UnitManager.Instance.UnitMax -= UnitHouse;
     }
 }

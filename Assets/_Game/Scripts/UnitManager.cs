@@ -42,8 +42,8 @@ public class UnitManager : MonoBehaviour
         if (allUnits.Contains(unit))
         {
             allUnits.Remove(unit);
-            UnitAmount -= allUnits.Count;
-            FoodUnitEat -= allUnits.Count;
+            UnitAmount = allUnits.Count;
+            FoodUnitEat = allUnits.Count;
         }
     }
     void Start()

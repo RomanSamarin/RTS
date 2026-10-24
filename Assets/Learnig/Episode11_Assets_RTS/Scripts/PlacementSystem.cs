@@ -11,6 +11,9 @@ public class PlacementSystem : MonoBehaviour
     // База данных, назначенная в инспекторе (нужна другим скриптам, например BuyBuilding)
     public ObjectsDatabseSO Database => database;
 
+    // true, пока игрок выбирает место для здания или сносит его
+    public bool IsPlacing => buildingState != null;
+
     [SerializeField] private InputManager inputManager;
     [SerializeField] private Grid grid;
 
@@ -49,6 +52,10 @@ public class PlacementSystem : MonoBehaviour
 
     public void StartPlacement(int ID)
     {
+        // Перед режимом строительства закрываем меню выбранного здания.
+        if (BuildingSelectionManager.Instance != null)
+            BuildingSelectionManager.Instance.DeselectCurrent();
+
         Debug.Log("Should Start Placement");
 
         selectedID = ID;
@@ -66,6 +73,10 @@ public class PlacementSystem : MonoBehaviour
 
     public void StartRemoving()
     {
+        // Перед режимом сноса закрываем меню выбранного здания.
+        if (BuildingSelectionManager.Instance != null)
+            BuildingSelectionManager.Instance.DeselectCurrent();
+
         StopPlacement();
 
         buildingState = new RemovingState(grid, previewSystem, floorData, furnitureData, objectPlacer);
@@ -148,7 +159,14 @@ public class PlacementSystem : MonoBehaviour
         switch (bf.benefitType)
         {
             case BuildBenefits.BenefitType.Housing:
-             //   StatusManager.Instance.IncreaseHousing(bf.benefitAmount);
+                if (UnitManager.Instance == null)
+                {
+                    Debug.LogWarning("[PlacementSystem] UnitManager не найден — жильё не добавлено.");
+                    break;
+                }
+
+                UnitManager.Instance.UnitMax += bf.benefitAmount;
+                Debug.Log($"[PlacementSystem] Жильё +{bf.benefitAmount}. Лимит юнитов: {UnitManager.Instance.UnitMax}");
                 break;
         }
     }

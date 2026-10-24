@@ -4,7 +4,7 @@ using UnityEngine;
 using _Game.Scripts.UI;
 
 // Добавили реализацию интерфейса ISelectable
-public class Barracks : MonoBehaviour 
+public class Barracks : MonoBehaviour, ISelectable
 {
     [Header("Настройки")]
     public GameObject objectToSpawn; 
@@ -36,12 +36,14 @@ public class Barracks : MonoBehaviour
 
         if (ResourcesManager.Instance != null && ResourcesManager.Instance.HasEnough(woodCost, stoneCost, wheatCost, fishCost))
         {
+            Debug.Log("Хватает ресурсов для тренеровки");
             ResourcesManager.Instance.Spend(woodCost, stoneCost, wheatCost, fishCost);
             unitQueue.Enqueue(objectToSpawn);
             
 
             if (!isTraining)
             {
+                Debug.Log("Тренеровка начата");
                 StartCoroutine(ProcessQueueRoutine());
             }
         }

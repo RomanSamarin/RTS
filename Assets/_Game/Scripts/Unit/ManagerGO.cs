@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 public class ManagerGO : MonoBehaviour
 {
@@ -58,8 +59,10 @@ public class ManagerGO : MonoBehaviour
 }
 
 
+        bool pointerOverUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+
         // ЛКМ — выбор юнитов
-        if (Input.GetMouseButtonDown(0))
+        if (Input.GetMouseButtonDown(0) && !pointerOverUI)
         {
             if (Physics.Raycast(ray, out hit, Mathf.Infinity, clickable))
             {
@@ -177,10 +180,17 @@ public class ManagerGO : MonoBehaviour
                || obj.CompareTag("StoneQuarry");
     }
 
+    private bool IsBuilding(GameObject obj)
+    {
+        return obj != null &&
+               (obj.GetComponentInParent<UiSelectBuilding>() != null ||
+                obj.GetComponentInChildren<UiSelectBuilding>() != null);
+    }
+
     private void SelectByClicking(GameObject unit)
     {
         DeselectAll();
-        if (unit == null) return; // Защита
+        if (unit == null || IsBuilding(unit)) return; // Защита
         unitsSelected.Add(unit);
         TriggerSelectionIndicator(unit, true);
         EnableUnitMovement(unit, true);
@@ -188,7 +198,7 @@ public class ManagerGO : MonoBehaviour
 
     private void MultiSelect(GameObject unit)
     {
-        if (unit == null) return; // Защита
+        if (unit == null || IsBuilding(unit)) return; // Защита
         if (!unitsSelected.Contains(unit))
         {
             unitsSelected.Add(unit);
@@ -237,7 +247,7 @@ public class ManagerGO : MonoBehaviour
 
     public void DragSelect(GameObject unit)
     {
-        if (unit == null) return; // Защита
+        if (unit == null || IsBuilding(unit)) return; // Защита
         if (!unitsSelected.Contains(unit))
         {
             unitsSelected.Add(unit);

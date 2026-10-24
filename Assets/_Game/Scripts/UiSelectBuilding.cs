@@ -1,30 +1,72 @@
-using System.Collections;
-using System.Collections.Generic;
-using Unity.VisualScripting;
 using UnityEngine;
 
-public class UiSelectBuilding : MonoBehaviour
+/// <summary>
+/// Вешается на здание. Хранит ссылку на меню именно этого здания
+/// и показывает/скрывает его при выборе.
+/// </summary>
+[DisallowMultipleComponent]
+public class UiSelectBuilding : MonoBehaviour, ISelectable
 {
+    [Header("Меню этого здания")]
+    [Tooltip("Панель, которая откроется при клике по зданию. У каждого здания может быть своя.")]
     public GameObject UIPanel;
 
-    // Start is called before the first frame update
-    void Start()
+    [Header("Необязательно")]
+    [Tooltip("Объект-подсветка, который включается вместе с меню.")]
+    public GameObject selectionIndicator;
+
+    public bool IsSelected { get; private set; }
+
+    public GameObject Panel
     {
-        
+        get
+        {
+            if (UIPanel != null) return UIPanel;
+
+            // Совместимость со старой казармой: у неё панель лежит в Barracks.UIkazarma.
+            Barracks barracks = GetComponent<Barracks>();
+            if (barracks == null) barracks = GetComponentInParent<Barracks>();
+            if (barracks == null) barracks = GetComponentInChildren<Barracks>();
+
+            return barracks != null ? barracks.UIkazarma : null;
+        }
     }
 
-    // Update is called once per frame
-    void Update()
+    private void Awake()
     {
-        RaycastHit hit;
-            if (Physics.Raycast(transform.position, transform.forward, out hit, 10f))
-            {
-                // Сравниваем transform объекта, в который попали, с transform этого скрипта
-                if (hit.transform == this.transform)
-                {
-                    Debug.Log("Лучом я попал в собственное тело!");
-                }
-            }
+        if (Panel != null) Panel.SetActive(false);
+        if (selectionIndicator != null) selectionIndicator.SetActive(false);
+    }
 
-                }
+    public void Select()
+    {
+        if (IsSelected) return;
+
+        IsSelected = true;
+
+        GameObject panel = Panel;
+        if (panel != null)
+            panel.SetActive(true);
+        else
+            Debug.LogWarning($"[UiSelectBuilding] У \"{name}\" не назначена панель меню (UIPanel).", this);
+
+        if (selectionIndicator != null)
+            selectionIndicator.SetActive(true);
+    }
+
+    public void Deselect()
+    {
+        if (!IsSelected) return;
+
+        IsSelected = false;
+
+        GameObject panel = Panel;
+        if (panel != null) panel.SetActive(false);
+        if (selectionIndicator != null) selectionIndicator.SetActive(false);
+    }
+
+    private void OnDisable()
+    {
+        Deselect();
+    }
 }
