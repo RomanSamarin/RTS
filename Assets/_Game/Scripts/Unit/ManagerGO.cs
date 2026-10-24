@@ -1,0 +1,248 @@
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class ManagerGO : MonoBehaviour
+{
+    public static ManagerGO Instance { get; set; }
+
+    public List<GameObject> allUnitsList = new List<GameObject>();
+    public List<GameObject> unitsSelected = new List<GameObject>();
+    public LayerMask clickable;
+    public LayerMask Ground;
+    public GameObject groundMarker;
+    public LayerMask attackable;
+    public bool attackCursorVisible;
+    public GOScript GOScript;
+    private Camera cam;
+
+    private void Awake()
+    {
+        if (Instance != null && Instance != this)
+            Destroy(gameObject);
+        else
+            Instance = this;
+    }
+
+    void Start()
+    {
+        cam = Camera.main;
+    }
+
+    private void Update()
+    {
+        RaycastHit hit;
+        Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+        if (groundMarker != null && groundMarker.activeSelf)
+        {
+            bool anyUnitStillMoving = false;
+            foreach (GameObject unit in unitsSelected)
+            {
+                if (unit == null) continue;
+                GOScript move = unit.GetComponent<GOScript>();
+                if (move != null && move.agent != null)
+                {
+                    if (move.agent.pathPending || move.agent.remainingDistance > move.agent.stoppingDistance)
+                    {
+                        anyUnitStillMoving = true;
+                        break;
+                    }
+                }
+    }
+    // Если абсолютно все выделенные юниты остановились — выключаем маркер
+    if (!anyUnitStillMoving)
+    {
+        groundMarker.SetActive(false);
+    }
+}
+
+
+        // ЛКМ — выбор юнитов
+        if (Input.GetMouseButtonDown(0))
+        {
+            if (Physics.Raycast(ray, out hit, Mathf.Infinity, clickable))
+            {
+                if (Input.GetKey(KeyCode.LeftShift))
+                    MultiSelect(hit.collider.gameObject);
+                else
+                    SelectByClicking(hit.collider.gameObject);
+            }
+            else
+            {
+                if (!Input.GetKey(KeyCode.LeftShift))
+                    DeselectAll();
+            }
+        }
+
+        // ПКМ — атака или движение
+        if (Input.GetMouseButtonDown(1) && unitsSelected.Count > 0)
+        {
+            // Сначала проверяем врагов (но НЕ свои склады и ресурсные объекты — приказ по ним = обычное движение)
+            if (Physics.Raycast(ray, out hit, Mathf.Infinity, attackable) && !IsResourceTarget(hit.collider.gameObject))
+            {
+                attackCursorVisible = true;
+
+                Transform target = hit.collider.transform;
+                foreach (GameObject unit in unitsSelected)
+                {
+                    // ИСПРАВЛЕНИЕ: Проверяем, не уничтожен ли сам выделенный юнит
+                    if (unit == null) continue;
+
+                    AttackController ac = unit.GetComponent<AttackController>();
+                    if (ac != null)
+                        ac.targetToAttack = target;
+
+                    GOScript move = unit.GetComponent<GOScript>();
+                    if (move != null)
+                        move.isCommandToMove = false;
+                }
+            }
+            // Потом проверяем землю
+            else if (Physics.Raycast(ray, out hit, Mathf.Infinity, Ground))
+            {
+                attackCursorVisible = false;
+
+                groundMarker.transform.position = hit.point;
+                groundMarker.SetActive(false);
+                groundMarker.SetActive(true);
+
+                foreach (GameObject unit in unitsSelected)
+                {
+                    // ИСПРАВЛЕНИЕ: Проверяем, не уничтожен ли сам выделенный юнит
+                    if (unit == null) continue;
+
+                    GOScript move = unit.GetComponent<GOScript>();
+                    if (move != null)
+                    {
+                        move.isCommandToMove = true;
+                        move.agent.SetDestination(hit.point);
+                    }
+
+                    AttackController ac = unit.GetComponent<AttackController>();
+                    if (ac != null)
+                        ac.targetToAttack = null;
+                }
+            }
+            else
+            {
+                attackCursorVisible = false;
+            }
+        }
+            CursorSelector();
+    }
+
+    private void CursorSelector()
+    {
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        RaycastHit hit;
+        if (Physics.Raycast(ray, out hit, Mathf.Infinity, clickable))
+        {
+            CursorManager.Instance.SetMarkerType(CursorManager.CursorType.Selectable);
+        }
+        else if (Physics.Raycast(ray, out hit, Mathf.Infinity, attackable) && unitsSelected.Count > 0 && AtleastOneOffensiveUnit(unitsSelected))
+        {
+            CursorManager.Instance.SetMarkerType(CursorManager.CursorType.Attackable);
+        }
+        else if (Physics.Raycast(ray, out hit, Mathf.Infinity, Ground) && unitsSelected.Count > 0 )
+        {
+            CursorManager.Instance.SetMarkerType(CursorManager.CursorType.Walkable);
+        }
+        else
+        {
+            CursorManager.Instance.SetMarkerType(CursorManager.CursorType.None);
+        }
+        
+    }
+
+    private bool AtleastOneOffensiveUnit(List<GameObject> unitSelected)
+    {
+        foreach (GameObject unit in unitSelected)
+        {
+            // ИСПРАВЛЕНИЕ: Безопасная проверка
+            if (unit != null && unit.GetComponent<AttackController>() != null)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Наши ресурсные объекты (жила, склады) — не боевые цели: ПКМ по ним = команда движения
+    private bool IsResourceTarget(GameObject obj)
+    {
+        if (obj == null) return false;
+        return obj.CompareTag("Sawmill") || obj.CompareTag("Warehouse")
+               || obj.CompareTag("FishHouse") || obj.CompareTag("StoneHouse")
+               || obj.CompareTag("StoneQuarry");
+    }
+
+    private void SelectByClicking(GameObject unit)
+    {
+        DeselectAll();
+        if (unit == null) return; // Защита
+        unitsSelected.Add(unit);
+        TriggerSelectionIndicator(unit, true);
+        EnableUnitMovement(unit, true);
+    }
+
+    private void MultiSelect(GameObject unit)
+    {
+        if (unit == null) return; // Защита
+        if (!unitsSelected.Contains(unit))
+        {
+            unitsSelected.Add(unit);
+            TriggerSelectionIndicator(unit, true);
+            EnableUnitMovement(unit, true);
+        }
+        else
+        {
+            EnableUnitMovement(unit, false);
+            TriggerSelectionIndicator(unit, false);
+            unitsSelected.Remove(unit);
+        }
+    }
+
+    public void DeselectAll()
+    {
+        foreach (var unit in unitsSelected)
+        {
+            // ИСПРАВЛЕНИЕ: Не пытаемся отключить скрипты у уничтоженных объектов
+            if (unit == null) continue;
+
+            EnableUnitMovement(unit, false);
+            TriggerSelectionIndicator(unit, false);
+        }
+
+        groundMarker.SetActive(false);
+        unitsSelected.Clear();
+    }
+
+    private void EnableUnitMovement(GameObject unit, bool shouldMove)
+    {
+        if (unit == null) return; // Защита
+        var script = unit.GetComponent<GOScript>();
+        if (script != null)
+            script.enabled = shouldMove;
+    }
+
+    private void TriggerSelectionIndicator(GameObject unit, bool IsVisible)
+    {
+        if (unit == null) return; // Защита
+        if (unit.transform.childCount > 0)
+        {
+            unit.transform.Find("Indicator").gameObject.SetActive(IsVisible);
+        }
+    }
+
+    public void DragSelect(GameObject unit)
+    {
+        if (unit == null) return; // Защита
+        if (!unitsSelected.Contains(unit))
+        {
+            unitsSelected.Add(unit);
+            TriggerSelectionIndicator(unit, true);
+            EnableUnitMovement(unit, true);
+        }
+    }
+}

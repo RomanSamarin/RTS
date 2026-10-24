@@ -8,7 +8,7 @@ namespace _Game.Scripts.UI
         public static ResourcesManager Instance = null;
 
         [SerializeField] private int wood = 0;
-        [SerializeField] private int stone = 0;
+        public int stone = 0;
         public int wheat = 0;
         [SerializeField] private int fish = 0;
 

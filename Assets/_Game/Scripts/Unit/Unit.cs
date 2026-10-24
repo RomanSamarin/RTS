@@ -31,9 +31,15 @@ public class Unit : MonoBehaviour
     void Start()
     {
         animator = GetComponent<Animator>();
+        // В список для рамки выделения добавляем только СВОИ юниты
+        // (у дерева/врага AttackController есть, но IsPlayer == false, либо его вообще нет)
         if (ManagerGO.Instance != null && ManagerGO.Instance.allUnitsList != null)
         {
-            ManagerGO.Instance.allUnitsList.Add(gameObject);
+            AttackController attack = GetComponent<AttackController>();
+            if (attack != null && attack.IsPlayer)
+            {
+                ManagerGO.Instance.allUnitsList.Add(gameObject);
+            }
         }
         unitHealth = unitMaxHealth;
         UpdateHealth();
