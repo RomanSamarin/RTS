@@ -2258,7 +2258,6 @@ MonoBehaviour:
   stoneCost: 5
   wheatCost: 5
   fishCost: 20
-  UIkazarma: {fileID: 0}
 --- !u!54 &2633711942336691330
 Rigidbody:
   m_ObjectHideFlags: 0

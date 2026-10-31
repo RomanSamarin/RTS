@@ -27,6 +27,31 @@ public class PlacementSystem : MonoBehaviour
 
     [SerializeField] private ObjectPlacer objectPlacer;
 
+    [Header("Стройка зданий")]
+    [Tooltip("Здание появляется не сразу, а как стройплощадка. " +
+             "Строители (Builder) подходят и достраивают его")]
+    public bool useConstructionSites = true;
+
+    [Tooltip("Сколько секунд строит один строитель (если для ID не задано своё время)")]
+    public float defaultBuildTime = 8f;
+
+    [Tooltip("Необязательно: префаб каркаса/фундамента стройки. " +
+             "Если пусто — каркас собирается кодом из простых фигур")]
+    public GameObject constructionSitePrefab;
+
+    [Tooltip("Своё время стройки для конкретных зданий (по ID из базы)")]
+    public List<BuildTimeSetting> buildTimes = new List<BuildTimeSetting>();
+
+    [System.Serializable]
+    public class BuildTimeSetting
+    {
+        [Tooltip("ID здания в Objects Database")]
+        public int id;
+
+        [Tooltip("Секунд на постройку одним строителем")]
+        public float seconds = 8f;
+    }
+
     int selectedID;
 
     IBuildingState buildingState;
@@ -62,6 +87,7 @@ public class PlacementSystem : MonoBehaviour
 
         Debug.Log("Placement ID: " + ID);
 
+        Debug.Log("[PlacementSystem] R — повернуть здание на 90°, Shift+R — против часовой.");
 
         StopPlacement();
 
@@ -123,12 +149,44 @@ public class PlacementSystem : MonoBehaviour
             // ---- Списываем ресурсы только если здание реально поставлено ---- //
             SpendResources(ob, wood, stone, wheat, fish);
 
-            // ---- Add Buildable Benifits ---- //
-            if (ob.benefits != null)
+            // ---- Ставим стройплощадку вместо готового здания ---- //
+            PlacementState placement = buildingState as PlacementState;
+            GameObject building = placement != null ? placement.LastPlacedObject : null;
+
+            if (useConstructionSites && building != null && !PlacementState.IsFloorID(ob.ID))
             {
-                foreach (BuildBenefits bf in ob.benefits)
+                float buildTime = GetBuildTime(ob);
+                Vector2Int siteSize = placement != null ? placement.PlacedSize : ob.Size;
+                ConstructionSite site = ConstructionSite.Begin(building, buildTime, siteSize, constructionSitePrefab);
+
+                if (site != null)
                 {
-                    CalculateAndAddBenefit(bf);
+                    // Бонусы (например, жильё) начисляем только после окончания стройки.
+                    site.Completed += _ => ApplyBenefits(ob);
+                    Debug.Log($"[PlacementSystem] Начата стройка \"{ob.Name}\": {buildTime:0.#} с одним строителем. " +
+                              $"Строителей можно назначить: до {site.MaxBuilders}.");
+
+                    if (Builder.ActiveCount == 0)
+                    {
+                        Debug.LogWarning("[PlacementSystem] На сцене нет строителей (Builder). " +
+                                         "Поставь рабочему роль Builder или добавь компонент Builder — " +
+                                         "иначе стройка не начнётся.");
+                    }
+                }
+                else
+                {
+                    ApplyBenefits(ob);
+                }
+            }
+            else
+            {
+                ApplyBenefits(ob);
+
+                if (building != null)
+                {
+                    Constructable constructable = building.GetComponent<Constructable>();
+                    if (constructable != null)
+                        constructable.ConstructableWasPlaced();
                 }
             }
         }
@@ -151,7 +209,32 @@ public class PlacementSystem : MonoBehaviour
 
         ResourcesManager.Instance.Spend(wood, stone, wheat, fish);
 
-        Debug.Log($"[PlacementSystem] Построено \"{ob.Name}\" (ID = {ob.ID}). Списано: Wood = {wood}, Stone = {stone}, Wheat = {wheat}, Fish = {fish}");
+        Debug.Log($"[PlacementSystem] Размещено \"{ob.Name}\" (ID = {ob.ID}). Списано: Wood = {wood}, Stone = {stone}, Wheat = {wheat}, Fish = {fish}");
+    }
+
+    /// <summary>Время стройки для конкретного здания (по ID) или общее.</summary>
+    private float GetBuildTime(ObjectData ob)
+    {
+        if (ob != null && buildTimes != null)
+        {
+            foreach (BuildTimeSetting setting in buildTimes)
+            {
+                if (setting != null && setting.id == ob.ID && setting.seconds > 0f)
+                    return setting.seconds;
+            }
+        }
+
+        return defaultBuildTime > 0f ? Mathf.Max(0.5f, defaultBuildTime) : 8f;
+    }
+
+    /// <summary>Начисляет бонусы здания (жильё и т.п.).</summary>
+    private void ApplyBenefits(ObjectData ob)
+    {
+        if (ob == null || ob.benefits == null)
+            return;
+
+        foreach (BuildBenefits bf in ob.benefits)
+            CalculateAndAddBenefit(bf);
     }
 
     private void CalculateAndAddBenefit(BuildBenefits bf)
@@ -192,15 +275,34 @@ public class PlacementSystem : MonoBehaviour
         // So there is no need to show cell indicator
         if (buildingState == null)
             return;
-      
+
+        bool rotationChanged = HandleRotationInput();
+
         Vector3 mousePosition = inputManager.GetSelectedMapPosition();
         Vector3Int gridPosition = grid.WorldToCell(mousePosition);
 
-        if (lastDetectedPosition != gridPosition)
+        if (rotationChanged || lastDetectedPosition != gridPosition)
         {
             buildingState.UpdateState(gridPosition);
             lastDetectedPosition = gridPosition;
         }
 
+    }
+
+    // R — повернуть на 90° по часовой, Shift+R — против часовой.
+    // Возвращает true, если поворот изменился.
+    private bool HandleRotationInput()
+    {
+        if (!(buildingState is PlacementState placementState))
+            return false;
+
+        if (!Input.GetKeyDown(KeyCode.R))
+            return false;
+
+        bool counterClockwise = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        placementState.Rotate(counterClockwise ? -1 : 1);
+
+        Debug.Log($"[PlacementSystem] Поворот здания: {Mathf.RoundToInt(placementState.Rotation.eulerAngles.y)}°");
+        return true;
     }
 }

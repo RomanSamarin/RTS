@@ -71,14 +71,18 @@ public class CameraController : MonoBehaviour
             targetYaw += mouseX * rotationSpeed * 1.5f * Time.deltaTime;
         }
 
-        if (Input.GetKey(KeyCode.Q)) targetYaw -= rotationSpeed * Time.deltaTime;
-        if (Input.GetKey(KeyCode.E)) targetYaw += rotationSpeed * Time.deltaTime;
-
-        float scroll = Input.GetAxis("Mouse ScrollWheel");
-        if (Mathf.Abs(scroll) > 0.01f)
+        // Пока расставляется строй, Q/E и колесо вращают строй, а не камеру
+        if (!SoldiersFormation.IsPlacing)
         {
-            targetZoom -= scroll * zoomSpeed * 100f * Time.deltaTime;
-            targetZoom = Mathf.Clamp(targetZoom, minZoomDist, maxZoomDist);
+            if (Input.GetKey(KeyCode.Q)) targetYaw -= rotationSpeed * Time.deltaTime;
+            if (Input.GetKey(KeyCode.E)) targetYaw += rotationSpeed * Time.deltaTime;
+
+            float scroll = Input.GetAxis("Mouse ScrollWheel");
+            if (Mathf.Abs(scroll) > 0.01f)
+            {
+                targetZoom -= scroll * zoomSpeed * 100f * Time.deltaTime;
+                targetZoom = Mathf.Clamp(targetZoom, minZoomDist, maxZoomDist);
+            }
         }
     }
 

@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.EventSystems;
 
 public class ManagerGO : MonoBehaviour
@@ -16,6 +17,14 @@ public class ManagerGO : MonoBehaviour
     public LayerMask attackable;
     public bool attackCursorVisible;
     public GOScript GOScript;
+
+    [Header("Движение группы")]
+    [Tooltip("Расстояние между точками, в которые встают юниты при движении группой")]
+    public float groupSpacing = 1.7f;
+
+    [Tooltip("Насколько далеко искать ближайшую точку NavMesh для позиции юнита")]
+    public float navMeshSnapRadius = 2f;
+
     private Camera cam;
 
     private void Awake()
@@ -33,6 +42,10 @@ public class ManagerGO : MonoBehaviour
 
     private void Update()
     {
+        // Завершаем приказы на перемещение у всех юнитов (и выделенных, и нет),
+        // чтобы по прибытии сбрасывался путь и маркер цели исчезал.
+        UpdateMoveCommands();
+
         RaycastHit hit;
         Ray ray = cam.ScreenPointToRay(Input.mousePosition);
         if (groundMarker != null && groundMarker.activeSelf)
@@ -42,24 +55,30 @@ public class ManagerGO : MonoBehaviour
             {
                 if (unit == null) continue;
                 GOScript move = unit.GetComponent<GOScript>();
-                if (move != null && move.agent != null)
+                if (move != null && move.isCommandToMove)
                 {
-                    if (move.agent.pathPending || move.agent.remainingDistance > move.agent.stoppingDistance)
-                    {
-                        anyUnitStillMoving = true;
-                        break;
-                    }
+                    anyUnitStillMoving = true;
+                    break;
                 }
-    }
-    // Если абсолютно все выделенные юниты остановились — выключаем маркер
-    if (!anyUnitStillMoving)
-    {
-        groundMarker.SetActive(false);
-    }
-}
+            }
+            // Если абсолютно все выделенные юниты остановились — выключаем маркер
+            if (!anyUnitStillMoving)
+            {
+                groundMarker.SetActive(false);
+            }
+        }
 
 
         bool pointerOverUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+
+        // Пока включён режим построения строя и есть выделенные юниты,
+        // ЛКМ/ПКМ обрабатывает SoldiersFormation. Если выделения нет — даём
+        // сначала выбрать юнитов, иначе из режима было бы не выйти.
+        if (SoldiersFormation.IsPlacing && unitsSelected.Count > 0)
+        {
+            CursorSelector();
+            return;
+        }
 
         // ЛКМ — выбор юнитов
         if (Input.GetMouseButtonDown(0) && !pointerOverUI)
@@ -98,7 +117,7 @@ public class ManagerGO : MonoBehaviour
 
                     GOScript move = unit.GetComponent<GOScript>();
                     if (move != null)
-                        move.isCommandToMove = false;
+                        move.StopMoving();
                 }
             }
             // Потом проверяем землю
@@ -106,26 +125,14 @@ public class ManagerGO : MonoBehaviour
             {
                 attackCursorVisible = false;
 
-                groundMarker.transform.position = hit.point;
-                groundMarker.SetActive(false);
-                groundMarker.SetActive(true);
-
-                foreach (GameObject unit in unitsSelected)
+                if (groundMarker != null)
                 {
-                    // ИСПРАВЛЕНИЕ: Проверяем, не уничтожен ли сам выделенный юнит
-                    if (unit == null) continue;
-
-                    GOScript move = unit.GetComponent<GOScript>();
-                    if (move != null)
-                    {
-                        move.isCommandToMove = true;
-                        move.agent.SetDestination(hit.point);
-                    }
-
-                    AttackController ac = unit.GetComponent<AttackController>();
-                    if (ac != null)
-                        ac.targetToAttack = null;
+                    groundMarker.transform.position = hit.point;
+                    groundMarker.SetActive(false);
+                    groundMarker.SetActive(true);
                 }
+
+                MoveSelectedUnitsTo(hit.point, hit);
             }
             else
             {
@@ -133,6 +140,187 @@ public class ManagerGO : MonoBehaviour
             }
         }
             CursorSelector();
+    }
+
+    /// <summary>
+    /// Проверяет у всех юнитов, дошёл ли каждый до своей точки приказа.
+    /// Нужно, чтобы по прибытии сбрасывался NavMesh-путь и исчезал маркер,
+    /// даже если юнит уже снят с выделения (его GOScript выключен).
+    /// </summary>
+    private void UpdateMoveCommands()
+    {
+        foreach (GameObject unit in allUnitsList)
+        {
+            if (unit == null) continue;
+
+            GOScript move = unit.GetComponent<GOScript>();
+            if (move != null)
+                move.UpdateMoveCommand();
+        }
+    }
+
+    /// <summary>
+    /// Двигает выделенных юнитов к клику, но каждому выдаёт отдельную точку
+    /// в сетке вокруг маркера. Если вести всех в одну точку, NavMeshAgent'ы
+    /// начинают толкаться и не могут дойти.
+    /// </summary>
+    private void MoveSelectedUnitsTo(Vector3 point, RaycastHit groundHit)
+    {
+        List<GameObject> units = new List<GameObject>();
+
+        foreach (GameObject unit in unitsSelected)
+        {
+            if (unit != null)
+                units.Add(unit);
+        }
+
+        if (units.Count == 0)
+            return;
+
+        Vector3 groupCenter = Vector3.zero;
+        foreach (GameObject unit in units)
+            groupCenter += unit.transform.position;
+        groupCenter /= units.Count;
+
+        List<Vector3> destinations = BuildGroupDestinations(point, units.Count, groupCenter);
+
+        if (destinations.Count == 0)
+            return;
+
+        AssignNearestDestinations(units, destinations, point, groundHit);
+    }
+
+    private struct UnitDestinationPair
+    {
+        public int UnitIndex;
+        public int DestinationIndex;
+        public float SqrDistance;
+    }
+
+    /// <summary>
+    /// Каждому юниту — ближайшая точка назначения. Пары «юнит-точка»
+    /// сортируются по дистанции, поэтому порядок выделения не влияет:
+    /// никто не побежит через всю группу.
+    /// </summary>
+    private void AssignNearestDestinations(
+        List<GameObject> units,
+        List<Vector3> destinations,
+        Vector3 fallback,
+        RaycastHit groundHit)
+    {
+        List<UnitDestinationPair> pairs = new List<UnitDestinationPair>();
+
+        for (int u = 0; u < units.Count; u++)
+        {
+            Vector3 unitPosition = units[u].transform.position;
+
+            for (int d = 0; d < destinations.Count; d++)
+            {
+                pairs.Add(new UnitDestinationPair
+                {
+                    UnitIndex = u,
+                    DestinationIndex = d,
+                    SqrDistance = (destinations[d] - unitPosition).sqrMagnitude
+                });
+            }
+        }
+
+        if (pairs.Count == 0)
+            return;
+
+        pairs.Sort((a, b) => a.SqrDistance.CompareTo(b.SqrDistance));
+
+        bool[] unitAssigned = new bool[units.Count];
+        bool[] destinationAssigned = new bool[destinations.Count];
+
+        foreach (UnitDestinationPair pair in pairs)
+        {
+            if (unitAssigned[pair.UnitIndex] || destinationAssigned[pair.DestinationIndex])
+                continue;
+
+            unitAssigned[pair.UnitIndex] = true;
+            destinationAssigned[pair.DestinationIndex] = true;
+
+            ApplyGroupMove(units[pair.UnitIndex], destinations[pair.DestinationIndex], groundHit);
+        }
+
+        // Юнитов больше, чем точек (например, из-за притягивания к NavMesh)
+        for (int u = 0; u < units.Count; u++)
+        {
+            if (unitAssigned[u])
+                continue;
+
+            ApplyGroupMove(units[u], fallback, groundHit);
+        }
+    }
+
+    private static void ApplyGroupMove(GameObject unit, Vector3 destination, RaycastHit groundHit)
+    {
+        GOScript move = unit.GetComponent<GOScript>();
+        if (move != null)
+            move.MoveTo(destination);
+
+        AttackController ac = unit.GetComponent<AttackController>();
+        if (ac != null)
+            ac.targetToAttack = null;
+
+        // Линия-указатель от каждого юнита к точке приказа (как было раньше)
+        DirectionIndicator direction = unit.GetComponent<DirectionIndicator>();
+        if (direction != null)
+            direction.DrawLine(groundHit);
+    }
+
+    /// <summary>
+    /// Строит сетку точек вокруг клика: count позиций с шагом groupSpacing.
+    /// Точки притягиваются к NavMesh, чтобы юниты не пытались идти в стену.
+    /// </summary>
+    private List<Vector3> BuildGroupDestinations(Vector3 center, int count, Vector3 groupCenter)
+    {
+        float spacing = Mathf.Max(0.6f, groupSpacing);
+
+        int columns = Mathf.CeilToInt(Mathf.Sqrt(count));
+        int rows = Mathf.CeilToInt((float)count / columns);
+
+        // Ряды сетки ставим перпендикулярно направлению подхода группы:
+        // тогда передний ряд достаётся ближайшим юнитам и никому не нужно
+        // продираться сквозь уже вставших товарищей.
+        Vector3 approach = groupCenter - center;
+        approach.y = 0f;
+
+        if (approach.sqrMagnitude < 0.0001f)
+            approach = Vector3.forward;
+        else
+            approach.Normalize();
+
+        Vector3 side = new Vector3(approach.z, 0f, -approach.x);
+
+        List<Vector3> result = new List<Vector3>(count);
+        int index = 0;
+
+        for (int row = 0; row < rows; row++)
+        {
+            int inRow = Mathf.Min(columns, count - index);
+            float rowOffset = (inRow - 1) * 0.5f;
+            float z = (row - (rows - 1) * 0.5f) * spacing;
+
+            for (int col = 0; col < inRow; col++)
+            {
+                float x = (col - rowOffset) * spacing;
+                Vector3 candidate = center + side * x + approach * z;
+
+                NavMeshHit navHit;
+                if (NavMesh.SamplePosition(candidate, out navHit, navMeshSnapRadius, NavMesh.AllAreas))
+                    result.Add(navHit.position);
+                else if (NavMesh.SamplePosition(center, out navHit, navMeshSnapRadius, NavMesh.AllAreas))
+                    result.Add(navHit.position);
+                else
+                    result.Add(candidate);
+
+                index++;
+            }
+        }
+
+        return result;
     }
 
     private void CursorSelector()
@@ -224,7 +412,8 @@ public class ManagerGO : MonoBehaviour
             TriggerSelectionIndicator(unit, false);
         }
 
-        groundMarker.SetActive(false);
+        if (groundMarker != null)
+            groundMarker.SetActive(false);
         unitsSelected.Clear();
     }
 
@@ -239,10 +428,12 @@ public class ManagerGO : MonoBehaviour
     private void TriggerSelectionIndicator(GameObject unit, bool IsVisible)
     {
         if (unit == null) return; // Защита
-        if (unit.transform.childCount > 0)
-        {
-            unit.transform.Find("Indicator").gameObject.SetActive(IsVisible);
-        }
+
+        // Не у всех юнитов есть дочерний объект Indicator — без проверки
+        // на null выделение падало с NullReferenceException.
+        Transform indicator = unit.transform.Find("Indicator");
+        if (indicator != null)
+            indicator.gameObject.SetActive(IsVisible);
     }
 
     public void DragSelect(GameObject unit)

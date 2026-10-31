@@ -8,15 +8,22 @@ using UnityEngine.AI;
 [RequireComponent(typeof(NavMeshAgent))]
 public class ResourcesMove : MonoBehaviour
 {
-    public enum UnitRole { Lumberjack, Carrier, Fisher, StoneMason }
+    // Builder добавлен в конец, чтобы не сдвинуть значения ролей,
+    // уже сохранённые в префабах сцены.
+    // Villager — безработный житель: ничего не добывает и может быть нанят в здание.
+    public enum UnitRole { Lumberjack, Carrier, Fisher, StoneMason, Builder, Villager }
 
     [Header("Настройки роли юнита")]
+    [Tooltip("Профессия рабочего. Builder — строитель: сам находит стройплощадку, " +
+             "подходит и достраивает здание (компонент Builder добавится автоматически). " +
+             "Villager — безработный житель: ничего не добывает, его можно нанять в здание")]
     public UnitRole role; 
     public int MaxUnitResources = 10;
 
-    [Header("Доставка ресурсов (контактом ТЕЛОМ юнита, не большим триггером)")]
-    [SerializeField] private float deliveryDistance = 1.0f;         // транзакция только когда тело юнита у склада
+    [Header("Доставка ресурсов (подход к двери здания)")]
+    [SerializeField] private float deliveryDistance = 1.0f;         // сдача без двери: тело юнита у стены
     [SerializeField] private float stopNearBuildingDistance = 1.2f; // юнит останавливается у стены склада, не заходит в центр
+    [SerializeField] private float doorReachDistance = 0.8f;        // юнит дошёл до двери (BuildingEntrance)
 
     [Header("Ссылки")]
     [SerializeField] private AttackController attackController;
@@ -24,11 +31,84 @@ public class ResourcesMove : MonoBehaviour
     private NavMeshAgent _agent;
     private GOScript _goScript;
     private Animator _animator; 
+    private Builder _builder;
 
-    [SerializeField] private bool hasResourcesInPocket = false; 
+    // Здание, в которое нанят рабочий. Если задано — рабочий несёт
+    // добытые ресурсы именно сюда, а не в ближайшее здание того же типа.
+    [SerializeField] private GameObject assignedWorkplace;
+
+    [SerializeField] private bool hasResourcesInPocket = false;
+
+    // ------------------------------------------------------------ Найм
+
+    /// <summary>Текущая профессия рабочего.</summary>
+    public UnitRole Role => role;
+
+    /// <summary>Безработный житель — его можно нанять.</summary>
+    public bool IsUnemployed => role == UnitRole.Villager;
+
+    /// <summary>Здание, в которое нанят рабочий (может быть null).</summary>
+    public GameObject AssignedWorkplace => assignedWorkplace;
+
+    /// <summary>
+    /// Меняет профессию рабочего и (необязательно) привязывает его к зданию.
+    /// Используется системой найма (WorkplaceHiring), но можно вызывать и вручную.
+    /// </summary>
+    public void SetRole(UnitRole newRole, GameObject workplace = null)
+    {
+        UnitRole previousRole = role;
+
+        // Недонесённый груз сбрасываем: иначе рабочий новой профессии
+        // застрянет с полным рюкзаком и не пойдёт работать.
+        if (previousRole != newRole)
+            ClearPocket();
+
+        // Уволенный строитель не должен продолжать искать стройки.
+        // Проверяем не только previousRole: компонент Builder мог остаться
+        // с прошлых версий сцены.
+        if (newRole != UnitRole.Builder)
+            RemoveBuilder();
+
+        role = newRole;
+        assignedWorkplace = workplace;
+
+        // Старые цели (дерево, склад, стройка) больше не актуальны.
+        if (attackController != null)
+            attackController.targetToAttack = null;
+
+        if (_agent != null && _agent.isOnNavMesh)
+            _agent.ResetPath();
+
+        if (_animator != null)
+        {
+            _animator.SetBool("IsFollowing", false);
+            _animator.SetBool("isAttacking", false);
+        }
+
+        if (newRole == UnitRole.Builder)
+            EnsureBuilder();
+    }
+
+    /// <summary>Привязывает рабочего к зданию (куда он будет сдавать ресурсы).</summary>
+    public void AssignWorkplace(GameObject workplace)
+    {
+        assignedWorkplace = workplace;
+    }
+
+    /// <summary>Снимает привязку к зданию.</summary>
+    public void ClearWorkplace()
+    {
+        assignedWorkplace = null;
+    }
+ 
 
     void Start()
     {
+        // Если в инспекторе выбрана роль «Builder», сам добавляем компонент
+        // строителя — достаточно поменять роль на префабе рабочего.
+        if (role == UnitRole.Builder)
+            EnsureBuilder();
+
         if (attackController == null) attackController = GetComponent<AttackController>();
         _gettingResources = GetComponent<GettingResources>();
         _agent = GetComponent<NavMeshAgent>();
@@ -40,7 +120,22 @@ public class ResourcesMove : MonoBehaviour
 
     void Update()
     {
+        // Строитель не занимается добычей: его поведение полностью
+        // ведёт компонент Builder (поиск стройки, подход, прогресс).
+        // EnsureBuilder нужен и здесь: роль могли переключить на Builder
+        // прямо в Play Mode, когда Start уже отработал.
+        if (role == UnitRole.Builder)
+        {
+            EnsureBuilder();
+            return;
+        }
+
         if (_goScript != null && _goScript.isCommandToMove) return; 
+
+        // Безработный житель не ищет работу: он просто стоит и ждёт, пока его
+        // наймут в здание. Приказы игрока (движение, атака) обрабатывают
+        // GOScript/ManagerGO независимо от этого скрипта.
+        if (role == UnitRole.Villager) return;
 
         // СДАЧА/ЗАБОР РЕСУРСОВ: если юнит уже у нужного склада — ОСТАНАВЛИВАЕМСЯ у стены
         // и проводим транзакцию прямо здесь (не через большой отслеживающий триггер).
@@ -99,47 +194,119 @@ public class ResourcesMove : MonoBehaviour
         if (role == UnitRole.StoneMason) GoToStoneHouse();
     }
 
+    /// <summary>
+    /// Гарантирует наличие компонента Builder у рабочего с ролью Builder.
+    /// Нужно, потому что роль можно поменять в Play Mode уже после Start().
+    /// </summary>
+    private void EnsureBuilder()
+    {
+        if (_builder == null)
+            _builder = GetComponent<Builder>();
+
+        if (_builder == null)
+            _builder = gameObject.AddComponent<Builder>();
+    }
+
+    /// <summary>
+    /// Убирает компонент строителя, когда рабочего переводят на другую
+    /// профессию. Без этого уволенный строитель продолжал бы искать стройки.
+    /// </summary>
+    private void RemoveBuilder()
+    {
+        Builder builder = _builder != null ? _builder : GetComponent<Builder>();
+        _builder = null;
+
+        if (builder == null)
+            return;
+
+        if (Application.isPlaying)
+            Destroy(builder);
+        else
+            DestroyImmediate(builder);
+    }
+
+    /// <summary>
+    /// Здание, в которое нанят рабочий, если оно подходит и ещё существует.
+    /// Возвращает null, если привязки нет или она больше не действует.
+    /// </summary>
+    private GameObject GetAssignedWorkplace(string requiredTag)
+    {
+        if (assignedWorkplace == null)
+            return null;
+
+        if (!assignedWorkplace.activeInHierarchy)
+            return null;
+
+        if (!string.IsNullOrEmpty(requiredTag) && !assignedWorkplace.CompareTag(requiredTag))
+            return null;
+
+        return assignedWorkplace;
+    }
+
+    /// <summary>
+    /// Точка, к которой рабочий должен подойти к цели. Для зданий с
+    /// BuildingEntrance — дверь, для остальных целей (дерево, враг, водоём) —
+    /// сам объект. Используется UnitFollowState вместо позиции цели.
+    /// </summary>
+    public Vector3 GetApproachPoint(Transform target)
+    {
+        if (target == null)
+            return transform.position;
+
+        if (BuildingEntrance.TryGetWorldPoint(target.gameObject, out Vector3 doorPoint))
+            return doorPoint;
+
+        return target.position;
+    }
+
+    // Назначает цель и включает анимацию следования.
+    private void SetTarget(Transform target)
+    {
+        if (target == null || attackController == null)
+            return;
+
+        attackController.targetToAttack = target;
+
+        if (_animator != null)
+            _animator.SetBool("IsFollowing", true);
+    }
+
     private void GoToSawmill()
     {
-        GameObject closestSawmill = FindClosestWithTag("Sawmill");
-        if (closestSawmill != null && attackController != null)
-        {
-            attackController.targetToAttack = closestSawmill.transform;
-            if (_animator != null) _animator.SetBool("IsFollowing", true);
-        }
+        GameObject sawmill = GetAssignedWorkplace("Sawmill");
+        if (sawmill == null)
+            sawmill = FindClosestWithTag("Sawmill");
+
+        SetTarget(sawmill != null ? sawmill.transform : null);
     }
 
     private void GoToFishHouse()
     {
-        GameObject closestFishHouse = FindClosestWithTag("FishHouse");
-        if (closestFishHouse != null && attackController != null)
-        {
-            attackController.targetToAttack = closestFishHouse.transform;
-            if (_animator != null) _animator.SetBool("IsFollowing", true);
-        }
+        GameObject fishHouse = GetAssignedWorkplace("FishHouse");
+        if (fishHouse == null)
+            fishHouse = FindClosestWithTag("FishHouse");
+
+        SetTarget(fishHouse != null ? fishHouse.transform : null);
     }
 
     private void GoToStoneHouse()
     {
         // Каменщик несёт добытый камень на ВРЕМЕННЫЙ склад камня (StoneHouse):
         // подходит, останавливается у стены склада и сдаёт камень (не заходя в центр).
-        GameObject closestStoneHouse = FindClosestWithTag("StoneHouse");
+        GameObject stoneHouse = GetAssignedWorkplace("StoneHouse");
+        if (stoneHouse == null)
+            stoneHouse = FindClosestWithTag("StoneHouse");
 
-        if (closestStoneHouse != null && attackController != null)
-        {
-            attackController.targetToAttack = closestStoneHouse.transform;
-            if (_animator != null) _animator.SetBool("IsFollowing", true);
-        }
+        SetTarget(stoneHouse != null ? stoneHouse.transform : null);
     }
 
     private void GoToMainWarehouse()
     {
-        GameObject closestWarehouse = FindClosestWithTag("Warehouse");
-        if (closestWarehouse != null && attackController != null)
-        {
-            attackController.targetToAttack = closestWarehouse.transform;
-            if (_animator != null) _animator.SetBool("IsFollowing", true);
-        }
+        GameObject warehouse = GetAssignedWorkplace("Warehouse");
+        if (warehouse == null)
+            warehouse = FindClosestWithTag("Warehouse");
+
+        SetTarget(warehouse != null ? warehouse.transform : null);
     }
 
     private void FindAndGoToClosestTree()
@@ -305,11 +472,57 @@ public class ResourcesMove : MonoBehaviour
         if (!other.CompareTag("Sawmill") && !other.CompareTag("Warehouse") && !other.CompareTag("FishHouse") && !other.CompareTag("StoneHouse")) return;
 
         // ВАЖНО: у юнита есть БОЛЬШОЙ триггер (он только для отслеживания) — им ресурсы не сдаются.
-        // Транзакция проходит только когда ТЕЛО юнита подошло к складу вплотную.
-        float bodyDistance = Vector3.Distance(transform.position, other.ClosestPoint(transform.position));
-        if (bodyDistance > deliveryDistance) return;
+        // Транзакция проходит только в точке сдачи: у двери здания (BuildingEntrance),
+        // если она задана, иначе когда ТЕЛО юнита подошло к стене вплотную.
+        if (!IsAtDeliveryPoint(other.gameObject, deliveryDistance)) return;
 
         ProcessBuilding(other.gameObject);
+    }
+
+    /// <summary>
+    /// Юнит уже в точке сдачи ресурсов: у двери (BuildingEntrance), если она
+    /// задана, иначе — у стены здания. <paramref name="wallDistance"/> —
+    /// допуск для зданий без двери.
+    /// </summary>
+    private bool IsAtDeliveryPoint(GameObject building, float wallDistance)
+    {
+        if (building == null)
+            return false;
+
+        if (BuildingEntrance.TryGetWorldPoint(building, out Vector3 doorPoint))
+        {
+            if (Vector3.Distance(transform.position, doorPoint) <= doorReachDistance)
+                return true;
+
+            // Дверь оказалась вне NavMesh — не даём рабочему зависнуть:
+            // сдаём у стены, но только когда он уже остановился возле неё,
+            // а не пробегая мимо по пути к двери.
+            return AgentReachedDestination() && IsNearWall(building, wallDistance);
+        }
+
+        return IsNearWall(building, wallDistance);
+    }
+
+    private bool IsNearWall(GameObject building, float wallDistance)
+    {
+        Collider targetCollider = building.GetComponent<Collider>();
+        if (targetCollider == null)
+            return true;
+
+        float bodyDistance = Vector3.Distance(transform.position, targetCollider.ClosestPoint(transform.position));
+        return bodyDistance <= wallDistance;
+    }
+
+    /// <summary>Агент дошёл до конечной точки пути (или уже стоит без пути).</summary>
+    private bool AgentReachedDestination()
+    {
+        if (_agent == null || !_agent.isOnNavMesh || _agent.pathPending)
+            return false;
+
+        if (!_agent.hasPath)
+            return _agent.velocity.sqrMagnitude <= 0.01f;
+
+        return _agent.remainingDistance <= _agent.stoppingDistance + 0.15f;
     }
 
     // Все транзакции со складами (сдача/забор ресурсов). Возвращает true, если транзакция прошла.
@@ -414,7 +627,8 @@ public class ResourcesMove : MonoBehaviour
         return processed;
     }
 
-    // Подходим к складу и ОСТАНАВЛИВАЕМСЯ у его стены (в центр не заходим), затем проводим транзакцию.
+    // Подходим к складу: к двери (BuildingEntrance), а если двери нет — к стене
+    // (в центр не заходим), затем проводим транзакцию.
     // Работает из Update — независимо от того, каким коллайдером юнита сработал триггер склада.
     private bool TryStopAndProcessNearbyBuilding()
     {
@@ -434,14 +648,10 @@ public class ResourcesMove : MonoBehaviour
 
         if (!isDeliveryTarget) return false;
 
-        Collider targetCollider = targetGO.GetComponent<Collider>();
-        if (targetCollider == null) return false;
+        // Юнит уже у двери (или у стены, если двери нет)?
+        if (!IsAtDeliveryPoint(targetGO, stopNearBuildingDistance)) return false;
 
-        // Юнит уже у стены склада?
-        float distance = Vector3.Distance(transform.position, targetCollider.ClosestPoint(transform.position));
-        if (distance > stopNearBuildingDistance) return false;
-
-        // ОСТАНОВКА у стены склада
+        // ОСТАНОВКА в точке сдачи
         if (_agent != null && _agent.isOnNavMesh) _agent.isStopped = true;
 
         bool processed = ProcessBuilding(targetGO);

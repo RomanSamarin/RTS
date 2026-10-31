@@ -17,20 +17,7 @@ public class UiSelectBuilding : MonoBehaviour, ISelectable
 
     public bool IsSelected { get; private set; }
 
-    public GameObject Panel
-    {
-        get
-        {
-            if (UIPanel != null) return UIPanel;
-
-            // Совместимость со старой казармой: у неё панель лежит в Barracks.UIkazarma.
-            Barracks barracks = GetComponent<Barracks>();
-            if (barracks == null) barracks = GetComponentInParent<Barracks>();
-            if (barracks == null) barracks = GetComponentInChildren<Barracks>();
-
-            return barracks != null ? barracks.UIkazarma : null;
-        }
-    }
+    public GameObject Panel => UIPanel;
 
     private void Awake()
     {

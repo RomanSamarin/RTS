@@ -6,7 +6,7 @@ using UnityEngine.AI;
 public class Unit : MonoBehaviour
 {
     public float unitHealth;
-    public float unitMaxHealth;
+    public float unitMaxHealth = 100f;
     public HealthTracker heathTracker;
     public Animator animator;
     public NavMeshAgent navMeshAgent;
@@ -18,14 +18,16 @@ public class Unit : MonoBehaviour
     public int fishReward;
     void Update()
     {
-         if (navMeshAgent.remainingDistance > navMeshAgent.stoppingDistance)
-                    {
-                        animator.SetBool("isMoving", true);
-                    }
-                    else
-                    {
-                        animator.SetBool("isMoving", false);
-                    }
+        if (navMeshAgent != null && animator != null)
+        {
+            // hasPath проверяем обязательно: без пути remainingDistance == Infinity,
+            // и после ResetPath() по прибытии юнит «шёл» бы на месте.
+            bool moving = navMeshAgent.hasPath
+                          && !navMeshAgent.pathPending
+                          && navMeshAgent.remainingDistance > navMeshAgent.stoppingDistance;
+
+            animator.SetBool("isMoving", moving);
+        }
     }
 
     void Start()
@@ -36,7 +38,11 @@ public class Unit : MonoBehaviour
         if (ManagerGO.Instance != null && ManagerGO.Instance.allUnitsList != null)
         {
             AttackController attack = GetComponent<AttackController>();
-            if (attack != null && attack.IsPlayer)
+            // Строитель отключает авто-захват целей (AttackController.IsPlayer = false),
+            // поэтому добавляем его в список выделения отдельно — иначе он
+            // не попадал бы в рамку выделения.
+            bool isBuilder = GetComponent<Builder>() != null;
+            if ((attack != null && attack.IsPlayer) || isBuilder)
             {
                 ManagerGO.Instance.allUnitsList.Add(gameObject);
             }

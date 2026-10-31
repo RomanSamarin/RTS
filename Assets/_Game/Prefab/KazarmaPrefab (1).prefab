@@ -645,7 +645,6 @@ MonoBehaviour:
   woodCost: 10
   stoneCost: 5
   wheatCost: 5
-  UIkazarma: {fileID: 0}
 --- !u!114 &8061020748588997708
 MonoBehaviour:
   m_ObjectHideFlags: 0

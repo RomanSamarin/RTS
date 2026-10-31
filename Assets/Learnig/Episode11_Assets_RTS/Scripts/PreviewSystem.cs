@@ -99,4 +99,11 @@ public class PreviewSystem : MonoBehaviour
         previewObject.transform.position = new Vector3(position.x, position.y + previewYOffset, position.z);
     }
 
+    // Поворот превью здания (например, при постройке на 90°)
+    public void RotatePreview(Quaternion rotation)
+    {
+        if (previewObject != null)
+            previewObject.transform.rotation = rotation;
+    }
+
 }

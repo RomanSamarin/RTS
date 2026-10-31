@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 public class UnitSelectionBox : MonoBehaviour
 {
@@ -12,6 +13,7 @@ public class UnitSelectionBox : MonoBehaviour
     private Rect selectionBox;
     private Vector2 startPosition;
     private Vector2 endPosition;
+    private bool selecting;
 
     private void Start()
     {
@@ -19,23 +21,57 @@ public class UnitSelectionBox : MonoBehaviour
         startPosition = Vector2.zero;
         endPosition = Vector2.zero;
 
-        boxVisual.gameObject.SetActive(false);
+        if (boxVisual != null)
+        {
+            boxVisual.sizeDelta = Vector2.zero;
+            boxVisual.gameObject.SetActive(false);
+        }
     }
 
     private void Update()
     {
-        // ����� ������ ���
+        if (boxVisual == null)
+            return;
+
+        // Пока идёт расстановка строя, рамка выделения не должна перехватывать ЛКМ
+        if (SoldiersFormation.IsPlacing &&
+            ManagerGO.Instance != null &&
+            ManagerGO.Instance.unitsSelected.Count > 0)
+        {
+            CancelSelection();
+            return;
+        }
+
+        bool pointerOverUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+
         if (Input.GetMouseButtonDown(0))
         {
+            // Клик по UI (например, кнопка на канвасе) не должен запускать
+            // рамку выделения и снимать выделение с юнитов
+            if (pointerOverUI)
+            {
+                CancelSelection();
+                return;
+            }
+
+            selecting = true;
             startPosition = Input.mousePosition;
+            endPosition = startPosition;
             selectionBox = new Rect();
+
+            // Сбрасываем старый размер рамки, иначе на первом кадре
+            // boxVisual.rect.width > 0 и ManagerGO.DeselectAll() сработает сразу
+            boxVisual.sizeDelta = Vector2.zero;
             boxVisual.gameObject.SetActive(true);
         }
 
-        // ����� ������ ���
+        if (!selecting)
+            return;
+
+        // Тянем рамку
         if (Input.GetMouseButton(0))
         {
-            if (boxVisual.rect.width > 0 || boxVisual.rect.height > 0)
+            if (boxVisual.rect.width > 0f || boxVisual.rect.height > 0f)
             {
                 ManagerGO.Instance.DeselectAll();
                 SelectUnits();
@@ -46,12 +82,24 @@ public class UnitSelectionBox : MonoBehaviour
             DrawSelection();
         }
 
-        // ����� ��������� ���
+        // Отпустили ЛКМ
         if (Input.GetMouseButtonUp(0))
         {
             SelectUnits();
-            startPosition = Vector2.zero;
-            endPosition = Vector2.zero;
+            CancelSelection();
+        }
+    }
+
+    private void CancelSelection()
+    {
+        selecting = false;
+        startPosition = Vector2.zero;
+        endPosition = Vector2.zero;
+        selectionBox = new Rect();
+
+        if (boxVisual != null)
+        {
+            boxVisual.sizeDelta = Vector2.zero;
             boxVisual.gameObject.SetActive(false);
         }
     }
@@ -95,8 +143,13 @@ public class UnitSelectionBox : MonoBehaviour
 
     private void SelectUnits()
     {
+        if (ManagerGO.Instance == null || myCam == null)
+            return;
+
         foreach (var unit in ManagerGO.Instance.allUnitsList)
         {
+            if (unit == null) continue;
+
             if (selectionBox.Contains(myCam.WorldToScreenPoint(unit.transform.position)))
             {
                 ManagerGO.Instance.DragSelect(unit);

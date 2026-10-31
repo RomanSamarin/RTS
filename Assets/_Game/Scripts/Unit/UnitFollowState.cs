@@ -8,6 +8,8 @@ public class UnitFollowState : StateMachineBehaviour
     NavMeshAgent agent;
     AttackController attackController;
     GOScript goScript;
+    Archer archer;
+    ResourcesMove resourcesMove;
     
     public float stopFollowDistance = 2f;
 
@@ -15,6 +17,9 @@ public class UnitFollowState : StateMachineBehaviour
     {
         agent = animator.GetComponent<NavMeshAgent>();
         attackController = animator.GetComponent<AttackController>();
+        archer = animator.GetComponent<Archer>();
+        resourcesMove = animator.GetComponent<ResourcesMove>();
+        if (resourcesMove == null) resourcesMove = animator.GetComponentInParent<ResourcesMove>();
         
         if (animator != null)
         {
@@ -37,11 +42,23 @@ public class UnitFollowState : StateMachineBehaviour
             // Ведем агента к цели
             if (agent != null && agent.isOnNavMesh)
             {
-                agent.SetDestination(attackController.targetToAttack.position);
+                Vector3 destination = attackController.targetToAttack.position;
+
+                // Рабочий идёт к двери здания (BuildingEntrance), а не в его центр.
+                // Для деревьев, врагов и водоёмов точка остаётся прежней.
+                if (resourcesMove != null)
+                    destination = resourcesMove.GetApproachPoint(attackController.targetToAttack);
+
+                agent.SetDestination(destination);
             }
 
             // Вычисляем дистанцию
             float distanceFromTarget = Vector3.Distance(attackController.targetToAttack.position, animator.transform.position);
+
+            // Лучник останавливается на своей дистанции стрельбы, а не вплотную к цели
+            float stopDistance = stopFollowDistance;
+            if (archer != null)
+                stopDistance = archer.attackRange;
 
             // Проверяем, к какому объекту подошел юнит (Дерево/Враг, Водоем ИЛИ Жила камня)
             bool isEnemyOrTree = attackController.targetToAttack.CompareTag("Enemy");
@@ -55,15 +72,17 @@ public class UnitFollowState : StateMachineBehaviour
                                      && resourcesMoveOnUnit.role == ResourcesMove.UnitRole.StoneMason;
 
             // Если цель имеет один из нужных тегов и мы подошли на дистанцию взаимодействия
-            if ((isEnemyOrTree || isFishingSpot || isStoneQuarryMine) && distanceFromTarget <= stopFollowDistance)
+            if ((isEnemyOrTree || isFishingSpot || isStoneQuarryMine) && distanceFromTarget <= stopDistance)
             {
                 if (agent != null && agent.isOnNavMesh)
                 {
                     agent.ResetPath(); // Останавливаем навигацию
                 }
-                
-                // Включаем переход в Attack State
-                animator.SetBool("isAttacking", true); 
+
+                // У лучника анимацией атаки управляет скрипт Archer (по каждому выстрелу),
+                // иначе isAttacking включался бы постоянно и клип не совпадал со стрельбой.
+                if (archer == null)
+                    animator.SetBool("isAttacking", true); 
             }
         }
         else

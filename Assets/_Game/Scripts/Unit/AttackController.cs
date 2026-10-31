@@ -7,7 +7,7 @@ public class AttackController : MonoBehaviour
     // Start is called before the first frame update
     public Transform targetToAttack;
     public int unitDamage;
-    public bool IsPlayer;
+    public bool IsPlayer = true;
 
     private void OnTriggerEnter(Collider other)
     {

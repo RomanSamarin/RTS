@@ -8,6 +8,7 @@ public class UnitAttackState : StateMachineBehaviour
     NavMeshAgent agent;
     AttackController attackController;
     GOScript goScript; 
+    Archer archer;
     
     public float stopAttackDistance = 2f;
     public float attackRate = 1f; 
@@ -17,6 +18,7 @@ public class UnitAttackState : StateMachineBehaviour
     {
         agent = animator.GetComponent<NavMeshAgent>();
         attackController = animator.GetComponent<AttackController>();
+        archer = animator.GetComponent<Archer>();
         
         if (animator != null)
         {
@@ -45,6 +47,14 @@ public class UnitAttackState : StateMachineBehaviour
             if (goScript != null && goScript.isCommandToMove == true)
             {
                 animator.SetBool("isAttacking", false);
+                return;
+            }
+
+            // Урон лучника наносит стрела, а анимацией выстрела управляет скрипт Archer:
+            // не трогаем isAttacking здесь, чтобы клип не сбрасывался между выстрелами.
+            if (archer != null)
+            {
+                LookAtTarget();
                 return;
             }
 
@@ -93,8 +103,11 @@ public class UnitAttackState : StateMachineBehaviour
 
             float distanceFromTarget = Vector3.Distance(attackController.targetToAttack.position, animator.transform.position);
 
+            // Лучник держится на дистанции стрельбы (урон наносит Arrow, а не ближний бой)
+            float stopDistance = archer != null ? archer.attackRange : stopAttackDistance;
+
             // Если подошли достаточно близко — включаем атаку (рыбалку)
-            if (distanceFromTarget > stopAttackDistance)
+            if (distanceFromTarget > stopDistance)
             {
                 if (agent != null && agent.isOnNavMesh) agent.SetDestination(attackController.targetToAttack.position);
                 animator.SetBool("isAttacking", false);
@@ -113,6 +126,10 @@ public class UnitAttackState : StateMachineBehaviour
 
     private void Attack()
     {
+        // У лучника урон наносит стрела (Arrow), ближний бой ему не нужен
+        if (archer != null)
+            return;
+
         if (attackController != null && attackController.targetToAttack != null)
         {
             Unit targetUnit = attackController.targetToAttack.GetComponent<Unit>();
