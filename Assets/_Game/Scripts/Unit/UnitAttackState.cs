@@ -126,6 +126,11 @@ public class UnitAttackState : StateMachineBehaviour
 
     private void Attack()
     {
+        // Враг сам считает урон в EnemyAi; здесь только анимация,
+        // иначе удар по юниту наносился бы дважды.
+        if (attackController != null && attackController.damageHandledExternally)
+            return;
+
         // У лучника урон наносит стрела (Arrow), ближний бой ему не нужен
         if (archer != null)
             return;

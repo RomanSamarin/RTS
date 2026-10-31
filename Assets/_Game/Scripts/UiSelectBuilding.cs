@@ -5,6 +5,7 @@ using UnityEngine;
 /// и показывает/скрывает его при выборе.
 /// </summary>
 [DisallowMultipleComponent]
+[RequireComponent(typeof(BuildingHealth))]
 public class UiSelectBuilding : MonoBehaviour, ISelectable
 {
     [Header("Меню этого здания")]
@@ -21,6 +22,11 @@ public class UiSelectBuilding : MonoBehaviour, ISelectable
 
     private void Awake()
     {
+        // Страховка для зданий, созданных до появления BuildingHealth:
+        // RequireComponent сам добавляет компонент только при ручном добавлении.
+        if (GetComponent<BuildingHealth>() == null)
+            gameObject.AddComponent<BuildingHealth>();
+
         if (Panel != null) Panel.SetActive(false);
         if (selectionIndicator != null) selectionIndicator.SetActive(false);
     }

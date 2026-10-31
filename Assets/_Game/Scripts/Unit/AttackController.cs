@@ -9,11 +9,14 @@ public class AttackController : MonoBehaviour
     public int unitDamage;
     public bool IsPlayer = true;
 
+    [Tooltip("Урон наносит внешний скрипт (например, EnemyAi). UnitAttackState только проигрывает анимацию.")]
+    public bool damageHandledExternally;
+
     private void OnTriggerEnter(Collider other)
     {
         if (IsPlayer && other.CompareTag("Enemy") && targetToAttack == null )
         {
-            // Проверка: если дерево уже уничтожается, игнорируем его
+            
             Unit targetUnit = other.GetComponent<Unit>();
             if (targetUnit != null && targetUnit.unitHealth <= 0) return;
 
@@ -25,7 +28,7 @@ public class AttackController : MonoBehaviour
     {
         if (IsPlayer && other.CompareTag("Enemy") && targetToAttack == null)
         {
-            // Проверка: если дерево уже уничтожается, игнорируем его
+            
             Unit targetUnit = other.GetComponent<Unit>();
             if (targetUnit != null && targetUnit.unitHealth <= 0) return;
 

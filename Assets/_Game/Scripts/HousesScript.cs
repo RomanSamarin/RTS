@@ -10,6 +10,8 @@ using UnityEngine;
 /// TrySettle() / Evict() / ClearResidents().
 /// Лимит дома — UnitHouse: больше этого числа юнитов в дом не заселится.
 /// </summary>
+[DisallowMultipleComponent]
+[RequireComponent(typeof(BuildingHealth))]
 public class HousesScript : MonoBehaviour
 {
     [Header("Вместимость")]
@@ -33,6 +35,14 @@ public class HousesScript : MonoBehaviour
     private bool housingRegistered;
 
     private float nextCleanupTime;
+
+    private void Awake()
+    {
+        // Дом — тоже здание: без BuildingHealth он не попадёт
+        // в список BuildingManager.AllBuildings и его нельзя будет разрушить.
+        if (GetComponent<BuildingHealth>() == null)
+            gameObject.AddComponent<BuildingHealth>();
+    }
 
     /// <summary>Список заселённых юнитов (только для чтения).</summary>
     public IReadOnlyList<GameObject> Residents => residents;
