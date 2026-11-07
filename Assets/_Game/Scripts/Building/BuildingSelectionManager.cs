@@ -47,6 +47,9 @@ public class BuildingSelectionManager : MonoBehaviour
 
     private void Update()
     {
+        if(SaveGameManager.IsLoading)return;
+        if(ManagerGO.Instance!=null&&(ManagerGO.Instance.BlocksMilitarySelection||Input.GetKeyDown(ManagerGO.Instance.attackMoveKey)||Input.GetKeyDown(ManagerGO.Instance.defenseFacingKey)||Input.GetKeyDown(ManagerGO.Instance.retreatKey)||Input.GetKeyDown(ManagerGO.Instance.patrolKey)))return;
+        if (Barracks.BlocksWorldInput || RoadBuilder.BlocksWorldInput) return;
         if (!Input.GetMouseButtonDown(0)) return;
 
         // Клик по UI (например, по кнопкам внутри открытого меню)
@@ -62,34 +65,58 @@ public class BuildingSelectionManager : MonoBehaviour
         if (cam == null) return;
 
         Ray ray = cam.ScreenPointToRay(Input.mousePosition);
-        RaycastHit[] hits = Physics.RaycastAll(
-            ray,
-            Mathf.Infinity,
-            buildingLayers,
-            QueryTriggerInteraction.Collide);
+        UiSelectBuilding building = FindBuildingByRay(ray);
 
-        if (hits.Length > 0)
+        if (building != null)
         {
-            Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
-
-            foreach (RaycastHit hit in hits)
-            {
-                UiSelectBuilding building = FindBuilding(hit.collider);
-                if (building != null)
-                {
-                    SelectBuilding(building);
-                    return;
-                }
-
-                // Ближайший объект — не здание (юнит, дерево, земля).
-                // Сквозь него не смотрим, иначе можно открыть меню здания,
-                // которое стоит за юнитом.
-                break;
-            }
+            SelectBuilding(building);
+            return;
         }
 
         if (deselectOnEmptyClick)
             DeselectCurrent();
+    }
+
+    /// <summary>
+    /// Ищет здание под лучом. Сначала — только по слоям из buildingLayers,
+    /// а если там ничего нет — по всем слоям: в сцене маска может не включать
+    /// слой, на котором лежит здание (например, казарма лежит на слое Kazarma).
+    /// </summary>
+    private UiSelectBuilding FindBuildingByRay(Ray ray)
+    {
+        UiSelectBuilding building = RaycastBuilding(ray, buildingLayers);
+        if (building != null || buildingLayers.value == ~0)
+            return building;
+
+        return RaycastBuilding(ray, ~0);
+    }
+
+    private static UiSelectBuilding RaycastBuilding(Ray ray, int layerMask)
+    {
+        RaycastHit[] hits = Physics.RaycastAll(
+            ray,
+            Mathf.Infinity,
+            layerMask,
+            QueryTriggerInteraction.Collide);
+
+        if (hits.Length == 0)
+            return null;
+
+        Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+        foreach (RaycastHit hit in hits)
+        {
+            UiSelectBuilding building = FindBuilding(hit.collider);
+            if (building != null)
+                return building;
+
+            // Ближайший объект — не здание (юнит, дерево, земля).
+            // Сквозь него не смотрим, иначе можно открыть меню здания,
+            // которое стоит за юнитом.
+            break;
+        }
+
+        return null;
     }
 
     private static UiSelectBuilding FindBuilding(Collider collider)
@@ -104,6 +131,7 @@ public class BuildingSelectionManager : MonoBehaviour
     public void SelectBuilding(UiSelectBuilding building)
     {
         if (building == null) return;
+        if(!FactionMember.IsPlayer(building.gameObject))return;
 
         if (current == building)
         {

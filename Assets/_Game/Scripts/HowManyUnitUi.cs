@@ -15,6 +15,7 @@ public class HowManyUnitUi : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        if(SaveGameManager.IsLoading)return;
         UnitManyText.text = UnitManager.Instance.UnitAmount.ToString();
     }
 }

@@ -29,6 +29,7 @@ public class UnitManager : MonoBehaviour
 
     public void RegisterUnit(UnitAdd unit)
     {
+        if(unit==null||!FactionMember.IsPlayer(unit.gameObject)||unit.GetComponent<CartHorse>()!=null||unit.GetComponent<FoodCart>()!=null||unit.GetComponent<Catapult>()!=null)return;
         if (!allUnits.Contains(unit))
         {
             allUnits.Add(unit);
@@ -46,24 +47,9 @@ public class UnitManager : MonoBehaviour
             FoodUnitEat = allUnits.Count;
         }
     }
-    void Start()
-    {
-        StartCoroutine(RepeatEveryMinute());
-        
-    }
-    IEnumerator RepeatEveryMinute()
-    {
-        while (true)
-        {
-            EatUnitFood();
-
-            yield return new WaitForSeconds(60f); 
-        }
-    }
+    // Оставлено для совместимости с событиями сцены. Питание здесь отключено.
     public void EatUnitFood()
     {
-        _Game.Scripts.UI.ResourcesManager.Instance.wheat -= FoodUnitEat;
-        _Game.Scripts.UI.ResourcesManager.Instance.Spend(0, 0, FoodUnitEat, 0);
     }
 
 

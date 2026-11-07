@@ -8,13 +8,17 @@ public class UnitIdleState : StateMachineBehaviour
     // OnStateEnter is called when a transition starts and the state machine starts to evaluate this state
     override public void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
-        attackController = animator.transform.GetComponent<AttackController>();
+        attackController = animator.GetComponentInParent<AttackController>();
     }
 
     // OnStateUpdate is called on each Update frame between OnStateEnter and OnStateExit callbacks
     override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
-        if (attackController.targetToAttack != null)
+        if(SaveGameManager.IsLoading)return;
+        if (UnitEat.ControlsMovement(animator)) return;
+        if(Builder.ControlsAnimation(animator))return;
+        if (BattleCombatant.BlocksActions(animator)) return;
+        if (attackController != null && attackController.targetToAttack != null)
         {
             animator.SetBool("IsFollowing", true);
         }

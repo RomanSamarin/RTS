@@ -49,6 +49,7 @@ public class GridData
 
     internal void RemoveObjectAt(Vector3Int gridPosition)
     {
+        if (!placedObjects.ContainsKey(gridPosition)) return;
         foreach (var pos in placedObjects[gridPosition].occupiedPositions)
         {
             placedObjects.Remove(pos);
@@ -60,6 +61,20 @@ public class GridData
         if (placedObjects.ContainsKey(gridPosition) == false)
             return -1;
         return placedObjects[gridPosition].PlacedObjectIndex;
+    }
+    public int GetObjectId(Vector3Int position) => placedObjects.TryGetValue(position, out var data) ? data.ID : -1;
+    public void RestoreSavedDestructionHooks(ObjectPlacer placer)
+    {
+        if(placer==null)return;
+        var indices=new HashSet<int>();
+        foreach(var pair in placedObjects)
+        {
+            int index=pair.Value.PlacedObjectIndex;if(!indices.Add(index))continue;
+            var obj=placer.GetPlacedObject(index);if(obj==null)continue;
+            var health=obj.GetComponent<BuildingHealth>();if(health==null)continue;
+            var cell=pair.Key;
+            health.Destroyed+=_=>{if(GetRepresentationIndex(cell)==index)RemoveObjectAt(cell);};
+        }
     }
 }
 

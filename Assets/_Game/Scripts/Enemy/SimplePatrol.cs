@@ -10,6 +10,7 @@ public class SimplePatrol : MonoBehaviour
 
     void Update()
     {
+        if(SaveGameManager.IsLoading)return;
         timer += Time.deltaTime;
 
         if (timer >= switchDirectionTime)

@@ -68,6 +68,7 @@ public class HousesScript : MonoBehaviour
     void Start()
     {
         if (UnitManager.Instance == null) return;
+        if(!FactionMember.IsPlayer(gameObject))return;
 
         UnitManager.Instance.UnitMax += UnitHouse;
         housingRegistered = true;
@@ -75,6 +76,7 @@ public class HousesScript : MonoBehaviour
 
     void Update()
     {
+        if(SaveGameManager.IsLoading)return;
         // Раз в секунду убираем уничтоженных юнитов и заселяем новых.
         if (Time.time < nextCleanupTime)
             return;
@@ -183,7 +185,7 @@ public class HousesScript : MonoBehaviour
             if (house == null || !house.isActiveAndEnabled)
                 continue;
 
-            if (!house.autoSettle || !house.HasFreePlace)
+            if (!house.autoSettle || !house.HasFreePlace || !BuildingRoadAccess.Allows(house) || !FactionMember.IsPlayer(house.gameObject))
                 continue;
 
             float distance = (house.transform.position - position).sqrMagnitude;
@@ -197,17 +199,14 @@ public class HousesScript : MonoBehaviour
         return best;
     }
 
-    /// <summary>Юнит игрока: рабочий (ResourcesMove) или боец с IsPlayer.</summary>
+    /// <summary>Житель или боец местного игрока.</summary>
     private static bool IsPlayerUnit(GameObject unit)
     {
         if (unit == null)
             return false;
+        if (unit.GetComponent<FoodCart>() != null || unit.GetComponent<CartHorse>() != null) return false;
 
-        AttackController attack = unit.GetComponent<AttackController>();
-        if (attack != null && attack.IsPlayer)
-            return true;
-
-        return unit.GetComponent<ResourcesMove>() != null;
+        return FactionMember.IsPlayer(unit);
     }
 
     // ------------------------------------------------------------------ Жители
@@ -221,6 +220,8 @@ public class HousesScript : MonoBehaviour
     {
         if (unit == null)
             return false;
+        if(!FactionMember.AreAllies(unit,gameObject))return false;
+        if (unit.GetComponent<FoodCart>() != null || unit.GetComponent<CartHorse>() != null) return false;
 
         RemoveMissingResidents();
 

@@ -59,8 +59,24 @@ public class UnitSpawningVillage : MonoBehaviour
             Debug.LogWarning($"[Village] {name}: рядом с точкой спавна нет NavMesh", this);
         }
 
+        targetHouse = HousesScript.FindHouseWithFreePlace(spawnPosition);
+        if (targetHouse == null) yield break;
         spawnedUnit = Instantiate(UnitToSpawn, spawnPosition, point.rotation);
+        SaveGameManager.Stamp(spawnedUnit,UnitToSpawn);
+        // Резервируем жильё до первого yield.
+        if (!targetHouse.TrySettle(spawnedUnit))
+        {
+            Destroy(spawnedUnit);
+            yield break;
+        }
         DisableGameplayUntilArrival(spawnedUnit);
+
+        if (FindAnimator(spawnedUnit) == null)
+        {
+            Debug.LogWarning($"[Village] {name}: у \"{UnitToSpawn.name}\" нет Animator — " +
+                             "житель будет двигаться без анимации. Назначьте в Unit To Spawn " +
+                             "модель с Animator (например, префаб рабочего).", this);
+        }
 
         spawnedAgent = spawnedUnit.GetComponent<NavMeshAgent>();
         if (spawnedAgent == null)
@@ -71,6 +87,7 @@ public class UnitSpawningVillage : MonoBehaviour
         // Агенту нужен кадр, чтобы встать на NavMesh.
         yield return null;
 
+        if (spawnedUnit == null || spawnedAgent == null) yield break;
         if (!spawnedAgent.isOnNavMesh)
         {
             spawnedAgent.enabled = false;
@@ -79,6 +96,7 @@ public class UnitSpawningVillage : MonoBehaviour
             yield return null;
         }
 
+        if (spawnedUnit == null || spawnedAgent == null) yield break;
         if (!spawnedAgent.isOnNavMesh)
         {
             Debug.LogWarning($"[Village] {name}: юнит не встал на NavMesh, он останется на точке спавна", this);
@@ -86,11 +104,10 @@ public class UnitSpawningVillage : MonoBehaviour
             yield break;
         }
 
-        targetHouse = HousesScript.FindHouseWithFreePlace(spawnPosition);
         if (targetHouse == null)
         {
             Debug.LogWarning($"[Village] {name}: нет дома со свободным местом", this);
-            FinishArrival();
+            Destroy(spawnedUnit);
             yield break;
         }
 
@@ -121,6 +138,10 @@ public class UnitSpawningVillage : MonoBehaviour
             yield break;
         }
 
+        // Геймплей до прихода в дом выключен, поэтому Unit.Update не крутит
+        // анимацию. Включаем ходьбу вручную, иначе житель «скользит» к дому.
+        SetWalkingAnimation(spawnedUnit, true);
+
         // Прибытие считаем по фактическому расстоянию до дома:
         // remainingDistance сразу после SetDestination бывает 0.
         float moveStart = Time.time;
@@ -128,6 +149,7 @@ public class UnitSpawningVillage : MonoBehaviour
 
         while (true)
         {
+            if (spawnedUnit == null || spawnedAgent == null) yield break;
             if (Time.time - moveStart >= MinMoveTime && DistanceTo(spawnedUnit.transform.position, housePosition) <= ArriveDistance)
             {
                 reachedHouse = true;
@@ -152,6 +174,26 @@ public class UnitSpawningVillage : MonoBehaviour
         delta.y = 0f;
         return delta.magnitude;
     }
+    public void RestoreSavedSpawning()
+    {StopAllCoroutines();StartCoroutine(ResumeSavedSpawning());}
+    private IEnumerator ResumeSavedSpawning()
+    {
+        while(SaveGameManager.IsLoading)yield return null;
+        if(!arrived&&spawnedUnit!=null)
+        {
+            spawnedAgent=spawnedUnit.GetComponent<NavMeshAgent>();
+            if(spawnedAgent!=null&&spawnedAgent.enabled&&spawnedAgent.isOnNavMesh&&targetHouse!=null
+                &&TryGetNavMeshPosition(targetHouse.transform.position,10,out var point))
+            {
+                spawnedAgent.isStopped=false;spawnedAgent.SetDestination(point);SetWalkingAnimation(spawnedUnit,true);
+                float began=Time.time;
+                while(spawnedUnit!=null&&DistanceTo(spawnedUnit.transform.position,point)>ArriveDistance&&Time.time-began<TravelTimeout)yield return null;
+            }
+            FinishArrival();
+            if(TimeToSpawnUnitInVillage)yield return SpawnLoop();
+        }
+        else yield return SpawnLoop();
+    }
 
     private static bool TryGetNavMeshPosition(Vector3 position, float radius, out Vector3 result)
     {
@@ -167,10 +209,12 @@ public class UnitSpawningVillage : MonoBehaviour
 
     private void FinishArrival()
     {
-        if (arrived)
+        if (arrived || spawnedUnit == null)
             return;
 
         arrived = true;
+
+        SetWalkingAnimation(spawnedUnit, false);
 
         if (spawnedAgent != null && spawnedAgent.isOnNavMesh)
         {
@@ -229,7 +273,7 @@ public class UnitSpawningVillage : MonoBehaviour
         if (attack == null)
             attack = unit.AddComponent<AttackController>();
 
-        attack.IsPlayer = true;
+        FactionMember.Set(unit,Faction.Player);
         attack.targetToAttack = null;
 
         ResourcesMove move = unit.GetComponent<ResourcesMove>();
@@ -243,5 +287,50 @@ public class UnitSpawningVillage : MonoBehaviour
         move.enabled = true;
 
         Debug.Log($"[Village] {unit.name} дошёл до дома и получил компоненты", unit);
+    }
+
+    // ------------------------------------------------------------- анимация
+
+    private static Animator FindAnimator(GameObject unit)
+    {
+        if (unit == null)
+            return null;
+
+        Animator animator = unit.GetComponent<Animator>();
+        if (animator == null)
+            animator = unit.GetComponentInChildren<Animator>();
+
+        return animator;
+    }
+
+    /// <summary>
+    /// Включает/выключает анимацию ходьбы, пока геймплей выключен
+    /// (Unit.Update в это время не работает).
+    /// </summary>
+    private static void SetWalkingAnimation(GameObject unit, bool walking)
+    {
+        Animator animator = FindAnimator(unit);
+        if (animator == null)
+            return;
+
+        if (!HasBoolParameter(animator, "IsFollowing"))
+            return;
+
+        animator.SetBool("IsFollowing", walking);
+    }
+
+    private static bool HasBoolParameter(Animator animator, string parameterName)
+    {
+        if (animator == null || animator.runtimeAnimatorController == null)
+            return false;
+
+        foreach (AnimatorControllerParameter parameter in animator.parameters)
+        {
+            if (parameter.type == AnimatorControllerParameterType.Bool &&
+                parameter.name == parameterName)
+                return true;
+        }
+
+        return false;
     }
 }

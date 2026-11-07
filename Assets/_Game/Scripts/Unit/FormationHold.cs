@@ -11,9 +11,15 @@ using UnityEngine;
 public static class FormationHold
 {
     private static readonly Dictionary<GameObject, Vector3> points = new Dictionary<GameObject, Vector3>();
+    private static readonly Dictionary<GameObject, Vector3> facings = new Dictionary<GameObject, Vector3>();
+    private static readonly Dictionary<GameObject, int> groups = new Dictionary<GameObject, int>();
+    private static int nextGroup;
+    public static int BeginGroup() { unchecked { return ++nextGroup; } }
 
     /// <summary>Запомнить, что юнит отправлен в точку строя.</summary>
     public static void SetPoint(GameObject unit, Vector3 point)
+    { SetPoint(unit, point, unit != null ? unit.transform.forward : Vector3.forward, 0); }
+    public static void SetPoint(GameObject unit, Vector3 point, Vector3 forward, int group)
     {
         if (unit == null)
             return;
@@ -21,7 +27,14 @@ public static class FormationHold
         Cleanup();
 
         points[unit] = point;
+        MeleeApproach.Release(unit);
+        FormationAnchor.Ensure(unit);
+        forward.y = 0; facings[unit] = forward.sqrMagnitude > 0.001f ? forward.normalized : Vector3.forward;
+        groups[unit] = group;
+        BattleCombatant.Ensure(unit)?.FormationChanged();
     }
+    public static bool TryGetFacing(GameObject unit, out Vector3 facing) { facing = default; return unit != null && facings.TryGetValue(unit, out facing); }
+    public static int GetGroup(GameObject unit) => unit != null && groups.TryGetValue(unit, out int group) ? group : 0;
 
     /// <summary>Точка строя юнита, если он в строй отправлялся.</summary>
     public static bool TryGetPoint(GameObject unit, out Vector3 point)
@@ -41,6 +54,8 @@ public static class FormationHold
             return;
 
         points.Remove(unit);
+        FormationAnchor.Release(unit);
+        facings.Remove(unit); groups.Remove(unit);
     }
 
     // Уничтоженные юниты остаются в словаре мусором — чистим при добавлении
@@ -66,6 +81,6 @@ public static class FormationHold
             return;
 
         foreach (GameObject unit in dead)
-            points.Remove(unit);
+        { points.Remove(unit); facings.Remove(unit); groups.Remove(unit); }
     }
 }

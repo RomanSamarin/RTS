@@ -73,7 +73,7 @@ public class BuyBuilding : MonoBehaviour
             return false;
         }
 
-        bool enough = ResourcesManager.Instance.HasEnough(neededWood, neededStone, neededWheat, neededFish);
+        bool enough = BuildCost.CanAfford(objectData);
 
         if (enough)
         {

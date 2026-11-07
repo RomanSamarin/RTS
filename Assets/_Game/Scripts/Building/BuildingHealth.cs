@@ -30,9 +30,17 @@ public class BuildingHealth : MonoBehaviour
 
     /// <summary>Здание уничтожено (здоровье дошло до нуля).</summary>
     public event Action<BuildingHealth> Died;
+    public event Action<BuildingHealth> Destroyed;
+
+    private void OnDestroy()
+    {
+        Destroyed?.Invoke(this);
+    }
 
     private void Awake()
     {
+        FactionMember.Ensure(gameObject);
+        BuildingRoadAccess.Ensure(gameObject);
         if (currentHealth < 0f)
             currentHealth = maxHealth;
     }
@@ -46,6 +54,10 @@ public class BuildingHealth : MonoBehaviour
     {
         BuildingManager.Unregister(this);
     }
+    public void OnButtonRecovery()
+    {
+
+    }
 
     private void OnValidate()
     {
@@ -58,8 +70,9 @@ public class BuildingHealth : MonoBehaviour
     }
 
     /// <summary>Наносит урон. Возвращает фактически снятое здоровье.</summary>
-    public float TakeDamage(float amount)
+    public float TakeDamage(float amount,GameObject attacker=null)
     {
+        if(attacker!=null&&!FactionMember.AreEnemies(attacker,gameObject))return 0f;
         if (amount <= 0f || IsDead)
             return 0f;
 
@@ -108,5 +121,9 @@ public class BuildingHealth : MonoBehaviour
 
         if (destroyOnDeath)
             Destroy(gameObject);
+    }
+    void Update()
+    {
+        if(SaveGameManager.IsLoading)return;
     }
 }

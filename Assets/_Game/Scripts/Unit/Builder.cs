@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -41,10 +42,28 @@ public class Builder : MonoBehaviour
     [Tooltip("Автоматически искать стройку, когда строитель свободен")]
     public bool autoFindWork = true;
 
+    [Header("Ремонт")]
+    public bool autoRepair = true;
+    [Min(0.1f), Tooltip("Восстановление здоровья в секунду. Материалы пока не расходуются.")]
+    public float repairSpeed = 10f;
+
     [Header("Анимация")]
     [Tooltip("Bool-параметр Animator, который включается во время работы. " +
              "По умолчанию isAttacking — он запускает клип удара/рубки")]
     public string workParameter = "isAttacking";
+
+    [Tooltip("Состояния анимации работы (пробуются по порядку). " +
+             "В контроллере это клип удара: Attack State / Attack")]
+    public string[] workStates = { "Attack State", "Attack" };
+
+    [Tooltip("Состояние покоя, в которое строитель возвращается после работы")]
+    public string[] idleStates = { "idle State", "Idle" };
+
+    [Tooltip("Слой Animator для анимации, если видимых слоёв не нашлось")]
+    public int animationLayer = 0;
+
+    [Tooltip("Длительность перехода в анимацию работы и обратно, сек")]
+    public float workAnimationFade = 0.15f;
 
     [Tooltip("Скорость поворота к стройке")]
     public float turnSpeed = 8f;
@@ -63,7 +82,21 @@ public class Builder : MonoBehaviour
     private int workHash;
     private bool hasWorkParameter;
 
+    // Какое состояние анимации работы сейчас включено (для возврата в Idle
+    // и для проверки, что строитель из него не выпал).
+    private bool workAnimationPlaying;
+    private int workStateHash;
+    private int workAnimationLayer;
+    private float nextWorkAnimCheck;
+
     private ConstructionSite currentSite;
+    private ConstructionSite orderedSite;
+    private bool hasBuildOrder;
+    public ConstructionSite OrderedSite=>hasBuildOrder?orderedSite:null;
+    private BuildingHealth repairTarget;
+    private Vector3 repairPoint;
+    private int repairMoveToken;
+    public BuildingHealth RepairTarget => repairTarget;
     private bool working;
 
     private float nextSearchTime;
@@ -88,11 +121,16 @@ public class Builder : MonoBehaviour
             return allBuilders.Count;
         }
     }
-
     // ------------------------------------------------------------------ Свойства
 
     /// <summary>Скорость этого строителя (используется площадкой).</summary>
     public float WorkSpeed => Mathf.Max(0.05f, workSpeed);
+    public bool ControlsWorkAnimation=>isActiveAndEnabled&&workAnimationPlaying&&(working||repairTarget!=null)
+        &&resourcesMove!=null&&resourcesMove.role==ResourcesMove.UnitRole.Builder
+        &&!UnitEat.ControlsMovement(this)&&!BattleCombatant.BlocksActions(this)
+        &&(goScript==null||!goScript.HasPlayerOrder);
+    public static bool ControlsAnimation(Component owner)
+    {var builder=owner!=null?owner.GetComponentInParent<Builder>():null;return builder!=null&&builder.ControlsWorkAnimation;}
 
     /// <summary>Строитель сейчас работает именно на этой площадке.</summary>
     public bool IsWorkingOn(ConstructionSite site)
@@ -106,6 +144,7 @@ public class Builder : MonoBehaviour
     {
         agent = GetComponent<NavMeshAgent>();
         goScript = GetComponent<GOScript>();
+        if(goScript!=null)goScript.ManualOrderIssued+=CancelBuildOrder;
         attackController = GetComponent<AttackController>();
         resourcesMove = GetComponent<ResourcesMove>();
         unit = GetComponent<Unit>();
@@ -123,7 +162,7 @@ public class Builder : MonoBehaviour
         // ManagerGO выставляет targetToAttack напрямую.
         if (attackController != null)
         {
-            attackController.IsPlayer = false;
+            attackController.autoAcquireTargets = false;
             attackController.targetToAttack = null;
         }
 
@@ -136,7 +175,7 @@ public class Builder : MonoBehaviour
 
     private void OnDisable()
     {
-        ReleaseSite();
+        CancelBuildOrder();
     }
 
     private void Start()
@@ -152,12 +191,17 @@ public class Builder : MonoBehaviour
 
     private void OnDestroy()
     {
+        if(goScript!=null)goScript.ManualOrderIssued-=CancelBuildOrder;
         ReleaseSite();
         allBuilders.Remove(this);
     }
 
     private void Update()
     {
+        if(SaveGameManager.IsLoading)return;
+        if(hasBuildOrder&&(orderedSite==null||!orderedSite.IsAvailable||!FactionMember.AreAllies(gameObject,orderedSite.gameObject)))CancelBuildOrder();
+        if (BuildingRoadAccess.PauseWorker(resourcesMove)) { ReleaseSite(); MaterialTask="Нет дороги к зданию"; return; }
+        if (UnitEat.ControlsMovement(this)) { ReleaseSite(); return; }
         // Мёртвый юнит ничего не строит.
         // Проверяем максимум здоровья: у рабочих он может быть не настроен (0),
         // и тогда unitHealth тоже 0 — но юнит при этом живой и должен строить.
@@ -168,7 +212,7 @@ public class Builder : MonoBehaviour
         }
 
         // Игрок приказал идти — стройка прерывается.
-        if (goScript != null && goScript.isCommandToMove)
+        if (goScript != null && goScript.HasPlayerOrder)
         {
             ReleaseSite();
             return;
@@ -181,8 +225,28 @@ public class Builder : MonoBehaviour
             return;
         }
 
+        if (resourcesMove != null && resourcesMove.IsReturningToWorkplace)
+        {
+            ReleaseSite();
+            return;
+        }
+
         if (currentSite != null && !currentSite.IsAvailable)
             ReleaseSite();
+
+        // Перерыв на еду/недоступный подъезд освобождает рабочее место, но сохраняет выбранную стройку.
+        if(hasBuildOrder&&currentSite==null)
+        {currentSite=orderedSite;nextRepathTime=0;}
+
+        if (repairTarget != null)
+        {
+            if (autoFindWork && autoRepair && CanRepair(repairTarget))
+            {
+                UpdateRepair();
+                return;
+            }
+            ReleaseSite();
+        }
 
         // Свободен — ищем ближайшую стройку.
         if (currentSite == null)
@@ -190,17 +254,30 @@ public class Builder : MonoBehaviour
             StopWorking();
 
             if (!autoFindWork)
+            {
+                if (resourcesMove != null) resourcesMove.ReturnToWorkplace();
                 return;
+            }
 
             if (Time.time < nextSearchTime)
                 return;
 
             nextSearchTime = Time.time + Mathf.Max(0.1f, retargetInterval);
 
-            currentSite = ConstructionSite.FindNearest(transform.position, searchRadius);
+            currentSite = ConstructionSite.FindNearest(transform.position, searchRadius,FactionMember.Of(gameObject));
             if (currentSite == null)
             {
+                var leftovers = GetComponent<GettingResources>();
+                if (leftovers != null && leftovers.HasCargo) { ReturnMaterials(leftovers); return; }
+                if (autoRepair && FindRepairTarget(searchRadius))
+                {
+                    nextRepathTime = 0f;
+                    LogState($"нашёл повреждённое здание {repairTarget.name}");
+                    UpdateRepair();
+                    return;
+                }
                 LogNoSite();
+                if (resourcesMove != null) resourcesMove.ReturnToWorkplace();
                 return;
             }
 
@@ -216,10 +293,20 @@ public class Builder : MonoBehaviour
             return;
         }
 
+        var materials = currentSite.Materials;
+        var backpack = GetComponent<GettingResources>();
+        if (backpack == null) backpack = gameObject.AddComponent<GettingResources>();
+        if (materials != null && (!materials.Ready || backpack.HasCargo))
+        {
+            StopWorking();
+            int capacity = resourcesMove != null ? resourcesMove.MaxUnitResources : 10;
+            if (materials.Supply(this, currentSite, agent, backpack, capacity, workDistance)) return;
+        }
+        MaterialTask = "Строит";
         Vector3 workPoint = currentSite.GetWorkPoint(transform.position);
 
         float distance = Vector3.Distance(transform.position, workPoint);
-        if (distance > workDistance)
+        if (distance > workDistance + (working ? .25f : 0f))
         {
             StopWorking();
 
@@ -240,6 +327,11 @@ public class Builder : MonoBehaviour
         {
             if (!currentSite.RegisterBuilder(this))
             {
+                if(hasBuildOrder)
+                {
+                    MaterialTask="Ждёт свободное место";
+                    return;
+                }
                 // На площадке уже максимум строителей — ищем другую.
                 ReleaseSite();
                 nextSearchTime = Time.time + Mathf.Max(0.1f, retargetInterval);
@@ -247,24 +339,56 @@ public class Builder : MonoBehaviour
             }
 
             working = true;
-            SetWorkParameter(true);
+            StartWorkAnimation();
 
             LogState($"начал строить {currentSite.name} " +
                      $"({currentSite.BuilderCount}/{currentSite.MaxBuilders} строителей)");
         }
+
+        EnsureWorkAnimation();
     }
 
     // ------------------------------------------------------------------ Стройка
 
+    public bool AssignConstruction(ConstructionSite site)
+    {
+        if(!isActiveAndEnabled||resourcesMove==null||resourcesMove.role!=ResourcesMove.UnitRole.Builder
+            ||site==null||!site.IsAvailable||!FactionMember.IsPlayer(gameObject)||!FactionMember.AreAllies(gameObject,site.gameObject)
+            ||(unit!=null&&unit.unitMaxHealth>0&&unit.unitHealth<=0))return false;
+        if(agent==null||!agent.enabled||!agent.isOnNavMesh)
+        {LogProblem("не может принять приказ: нет активного NavMeshAgent на поверхности");return false;}
+        var filter=new NavMeshQueryFilter{agentTypeID=agent.agentTypeID,areaMask=agent.areaMask};
+        var path=new NavMeshPath();
+        if(!NavMesh.SamplePosition(site.GetWorkPoint(transform.position),out var hit,2,filter)
+            ||!site.IsNearWorkArea(hit.position)
+            ||!agent.CalculatePath(hit.position,path)||path.status!=NavMeshPathStatus.PathComplete)
+        {LogProblem("нет полного пути к выбранной стройке");return false;}
+        // Только после проверки заменяем предыдущую работу. Груз остаётся в рюкзаке.
+        CancelBuildOrder();
+        if(goScript!=null){goScript.StopMoving();goScript.NotifyMilitaryOrder();}
+        else GetComponent<UnitEat>()?.CancelForCommand(false);
+        if(attackController!=null)attackController.targetToAttack=null;
+        FormationHold.Clear(gameObject);
+        resourcesMove.CompleteWorkplaceReturn();
+        orderedSite=site;hasBuildOrder=true;currentSite=site;
+        nextRepathTime=0;nextSearchTime=0;MaterialTask="Идёт строить";
+        LogState($"получил приказ строить {site.name}");return true;
+    }
+    public void CancelBuildOrder()
+    {
+        hasBuildOrder=false;orderedSite=null;ReleaseSite();
+    }
+
     /// <summary>Вызывается площадкой, когда стройка завершена.</summary>
     public void OnSiteCompleted(ConstructionSite site)
     {
+        if(orderedSite==site){hasBuildOrder=false;orderedSite=null;}
         if (currentSite != site)
             return;
 
         working = false;
         currentSite = null;
-        SetWorkParameter(false);
+        StopWorkAnimation();
 
         nextSearchTime = Time.time + Mathf.Max(0.1f, retargetInterval);
     }
@@ -272,20 +396,164 @@ public class Builder : MonoBehaviour
     /// <summary>Вызывается площадкой, если её снесли до окончания стройки.</summary>
     public void OnSiteRemoved(ConstructionSite site)
     {
+        if(orderedSite==site){hasBuildOrder=false;orderedSite=null;}
         if (currentSite != site)
             return;
 
         working = false;
         currentSite = null;
-        SetWorkParameter(false);
+        StopWorkAnimation();
 
         nextSearchTime = Time.time + Mathf.Max(0.1f, retargetInterval);
     }
 
     private void ReleaseSite()
     {
+        MaterialTask = "Ищет стройку";
+        if (currentSite != null && currentSite.Materials != null) currentSite.Materials.ReleaseBuilder(this);
         StopWorking();
         currentSite = null;
+        repairTarget = null;
+        if (goScript != null && repairMoveToken != 0) goScript.EndSupplyMove(repairMoveToken);
+        repairMoveToken = 0;
+    }
+
+    // Один строитель резервирует здание до завершения или прерывания ремонта.
+    private bool CanRepair(BuildingHealth building)
+    {
+        if (building == null || !building.isActiveAndEnabled || building.IsDead ||
+            building.CurrentHealth >= building.MaxHealth ||
+            !FactionMember.AreAllies(gameObject,building.gameObject) ||
+            building.GetComponentInParent<ConstructionSite>() != null)
+            return false;
+
+        foreach (var builder in allBuilders)
+            if (builder != null && builder != this && builder.isActiveAndEnabled &&
+                builder.repairTarget == building) return false;
+        return true;
+    }
+
+    private bool FindRepairTarget(float radius)
+    {
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return false;
+        float best = Mathf.Max(0f, radius) * Mathf.Max(0f, radius);
+        foreach (var building in BuildingManager.AllBuildings)
+        {
+            if (!CanRepair(building)) continue;
+            float distance = (building.transform.position - transform.position).sqrMagnitude;
+            if (distance > best || !TryRepairPoint(building, out Vector3 point)) continue;
+            best = distance;
+            repairTarget = building;
+            repairPoint = point;
+        }
+        if (repairTarget == null) return false;
+        if (goScript != null && !goScript.TryBeginSupplyMove(out repairMoveToken))
+        {
+            repairTarget = null;
+            return false;
+        }
+        return true;
+    }
+
+    private bool TryRepairPoint(BuildingHealth building, out Vector3 point)
+    {
+        point = default;
+        var filter = new NavMeshQueryFilter { agentTypeID = agent.agentTypeID, areaMask = agent.areaMask };
+        var path = new NavMeshPath();
+        Collider body = building.GetComponent<Collider>();
+        if (body == null) body = building.GetComponentInChildren<Collider>();
+        Bounds bounds = body != null ? body.bounds : new Bounds(building.transform.position, Vector3.zero);
+        float best = float.PositiveInfinity;
+        // Пробуем ближайшую стену, дверь и восемь сторон: центр здания обычно вырезан из NavMesh.
+        for (int i = 0; i < 10; i++)
+        {
+            Vector3 candidate;
+            if (i == 0) candidate = bounds.ClosestPoint(transform.position);
+            else if (i == 1)
+            {
+                if (!BuildingEntrance.TryGetWorldPoint(building.gameObject, out candidate)) continue;
+            }
+            else
+            {
+                float angle = (i - 2) * Mathf.PI / 4f;
+                Vector3 direction = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+                candidate = bounds.ClosestPoint(bounds.center + direction * (bounds.extents.magnitude + 2f));
+                candidate += direction * (agent.radius + 0.15f);
+            }
+            candidate.y = transform.position.y;
+            if (!NavMesh.SamplePosition(candidate, out var hit, Mathf.Max(1f, workDistance), filter)) continue;
+            if (Vector3.Distance(hit.position, bounds.ClosestPoint(hit.position)) > Mathf.Max(0.2f, workDistance)) continue;
+            if (!agent.CalculatePath(hit.position, path) || path.status != NavMeshPathStatus.PathComplete) continue;
+            float distance = (hit.position - transform.position).sqrMagnitude;
+            if (distance >= best) continue;
+            best = distance;
+            point = hit.position;
+        }
+        return best < float.PositiveInfinity;
+    }
+
+    private void UpdateRepair()
+    {
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh) { ReleaseSite(); return; }
+        if (goScript != null && !goScript.OwnsSupplyOrder(repairMoveToken)) { ReleaseSite(); return; }
+        if (Time.time >= nextRepathTime)
+        {
+            nextRepathTime = Time.time + Mathf.Max(0.1f, repathInterval);
+            if (!TryRepairPoint(repairTarget, out repairPoint))
+            {
+                ReleaseSite();
+                nextSearchTime = Time.time + Mathf.Max(0.1f, retargetInterval);
+                return;
+            }
+        }
+        // Проверяем фактическое расстояние: здоровье не восстанавливается издалека.
+        Collider body = repairTarget.GetComponent<Collider>();
+        if (body == null) body = repairTarget.GetComponentInChildren<Collider>();
+        Vector3 surface = body != null ? body.ClosestPoint(transform.position) : repairTarget.transform.position;
+        bool atBuilding = Vector3.Distance(transform.position, surface) <= Mathf.Max(0.2f, workDistance);
+        if (!atBuilding || Vector3.Distance(transform.position, repairPoint) > Mathf.Max(0.25f, workDistance))
+        {
+            StopWorkAnimation();
+            MaterialTask = "Идёт ремонтировать";
+            if (goScript != null)
+            {
+                if (!goScript.MoveForSupply(repairMoveToken, repairPoint, 0.1f)) ReleaseSite();
+            }
+            else MoveTowards(repairPoint);
+            return;
+        }
+        MaterialTask = "Ремонтирует";
+        StopAgent();
+        FaceTarget(repairTarget.transform.position);
+        StartWorkAnimation();
+        EnsureWorkAnimation();
+        repairTarget.Heal(Mathf.Max(0f, repairSpeed) * Time.deltaTime);
+        if (repairTarget == null || repairTarget.CurrentHealth >= repairTarget.MaxHealth)
+        {
+            ReleaseSite();
+            nextSearchTime = 0f;
+        }
+    }
+
+    public string MaterialTask { get; set; } = "Ищет стройку";
+    public void ReturnMaterials(GettingResources cargo)
+    {
+        MaterialTask = "Возвращает материалы";
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh) return;
+        _Game.Scripts.UI.WarehouseStorage closest = null; float best = float.PositiveInfinity;
+        foreach (var store in _Game.Scripts.UI.WarehouseStorage.All)
+        {
+            if (store.FreeCapacity <= 0||!FactionMember.CanUse(gameObject,store.gameObject)) continue;
+            float distance = (store.transform.position - transform.position).sqrMagnitude;
+            Vector3 point = resourcesMove != null ? resourcesMove.GetApproachPoint(store.transform) : store.transform.position;
+            var path = new NavMeshPath();
+            if (distance >= best || !agent.CalculatePath(point, path) || path.status != NavMeshPathStatus.PathComplete) continue;
+            closest = store; best = distance;
+        }
+        if (closest == null) { StopAgent(); return; }
+        if (resourcesMove != null && resourcesMove.IsAtMiningHome(closest.gameObject))
+        { StopAgent(); closest.Deposit(cargo); }
+        else MoveTowards(resourcesMove != null ? resourcesMove.GetApproachPoint(closest.transform) : closest.transform.position);
     }
 
     private void StopWorking()
@@ -298,7 +566,7 @@ public class Builder : MonoBehaviour
                 currentSite.UnregisterBuilder(this);
         }
 
-        SetWorkParameter(false);
+        StopWorkAnimation();
     }
 
     // ------------------------------------------------------------------ Движение
@@ -366,12 +634,157 @@ public class Builder : MonoBehaviour
 
     // ------------------------------------------------------------------ Анимация
 
-    private void SetWorkParameter(bool value)
+    /// <summary>
+    /// Включает анимацию работы. Одного bool недостаточно: в контроллере
+    /// переход в Attack State есть только из Following State, а строитель
+    /// стоит в idle State — поэтому клип удара/рубки включаем напрямую.
+    /// Клип удара зациклен, так что он крутится всё время стройки.
+    /// </summary>
+    private void StartWorkAnimation()
     {
-        if (!hasWorkParameter || animator == null)
+        if (animator == null || !hasWorkParameter)
             return;
 
-        animator.SetBool(workHash, value);
+        animator.SetBool(workHash, true);
+
+        if (workAnimationPlaying)
+            return;
+
+        workAnimationPlaying = true;
+        nextWorkAnimCheck = 0f;
+
+        if (PlayOnVisibleLayers(workStates, out int layer, out int hash))
+        {
+            workAnimationLayer = layer;
+            workStateHash = hash;
+            return;
+        }
+
+        int fallback = Mathf.Clamp(animationLayer, 0, Mathf.Max(0, animator.layerCount - 1));
+
+        if (TryCrossFade(fallback, workStates, out hash))
+        {
+            workAnimationLayer = fallback;
+            workStateHash = hash;
+            return;
+        }
+
+        workAnimationPlaying = false;
+        Debug.LogWarning($"[Builder] {name}: в Animator нет состояний " +
+                         $"«{string.Join("» / «", workStates)}» — анимация стройки не включится.", this);
+    }
+
+    /// <summary>Возвращает строителя в стойку после работы.</summary>
+    private void StopWorkAnimation()
+    {
+        if (animator == null || !hasWorkParameter)
+            return;
+
+        animator.SetBool(workHash, false);
+
+        if (!workAnimationPlaying)
+            return;
+
+        workAnimationPlaying = false;
+        workStateHash = 0;
+
+        // Из Attack State переход идёт в Following State (шаг на месте),
+        // поэтому в Idle переводим напрямую.
+        if (PlayOnVisibleLayers(idleStates, out _, out _))
+            return;
+
+        int fallback = Mathf.Clamp(animationLayer, 0, Mathf.Max(0, animator.layerCount - 1));
+        TryCrossFade(fallback, idleStates, out _);
+    }
+
+    /// <summary>
+    /// Страховка: если Animator всё-таки ушёл из состояния работы
+    /// (например, из-за перехода по IsFollowing), возвращаем клип удара.
+    /// </summary>
+    private void EnsureWorkAnimation()
+    {
+        if ((!working && repairTarget == null) || !workAnimationPlaying || animator == null)
+            return;
+
+        // Параметром работы владеет строитель, а не боевой StateMachineBehaviour.
+        if(hasWorkParameter)animator.SetBool(workHash,true);
+
+        if (Time.time < nextWorkAnimCheck)
+            return;
+
+        nextWorkAnimCheck = Time.time + 0.3f;
+
+        if (workAnimationLayer < 0 || workAnimationLayer >= animator.layerCount)
+            return;
+
+        if (animator.IsInTransition(workAnimationLayer))
+            return;
+
+        if (animator.GetCurrentAnimatorStateInfo(workAnimationLayer).shortNameHash == workStateHash)
+            return;
+
+        if (TryCrossFade(workAnimationLayer, workStates, out int hash))
+            workStateHash = hash;
+    }
+
+    private bool PlayOnVisibleLayers(string[] stateNames, out int usedLayer, out int usedHash)
+    {
+        usedLayer = -1;
+        usedHash = 0;
+
+        if (animator == null)
+            return false;
+
+        bool played = false;
+
+        for (int layer = 0; layer < animator.layerCount; layer++)
+        {
+            if (animator.GetLayerWeight(layer) <= 0.01f)
+                continue;
+
+            if (!TryCrossFade(layer, stateNames, out int hash))
+                continue;
+
+            if (!played)
+            {
+                usedLayer = layer;
+                usedHash = hash;
+                played = true;
+            }
+        }
+
+        return played;
+    }
+
+    private bool TryCrossFade(int layer, string[] stateNames, out int playedHash)
+    {
+        playedHash = 0;
+
+        if (animator == null || stateNames == null)
+            return false;
+
+        if (layer < 0 || layer >= animator.layerCount)
+            return false;
+
+        foreach (string stateName in stateNames)
+        {
+            if (string.IsNullOrEmpty(stateName))
+                continue;
+
+            int hash = Animator.StringToHash(stateName);
+
+            if (!animator.HasState(layer, hash))
+                continue;
+
+            playedHash=hash;
+            if(animator.GetCurrentAnimatorStateInfo(layer).shortNameHash==hash
+                ||(animator.IsInTransition(layer)&&animator.GetNextAnimatorStateInfo(layer).shortNameHash==hash))return true;
+            animator.CrossFadeInFixedTime(hash, Mathf.Max(0.01f, workAnimationFade), layer, 0f);
+            playedHash = hash;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool HasBoolParameter(Animator animator, string parameterName)

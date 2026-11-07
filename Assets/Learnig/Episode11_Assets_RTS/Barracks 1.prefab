@@ -2298,6 +2298,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   UIPanel: {fileID: 0}
+  panelName: KazarmaPanel
 --- !u!208 &692746962970728108
 NavMeshObstacle:
   m_ObjectHideFlags: 0

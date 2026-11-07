@@ -1,0 +1,92 @@
+{
+  "Birch.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 1282
+  },
+  "Bush_Berry.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 844
+  },
+  "Bush_Broad.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 484
+  },
+  "Bush_Round.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 320
+  },
+  "DeadTree.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 798
+  },
+  "Fern.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 672
+  },
+  "Grass_Medium.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 56
+  },
+  "Grass_Small.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 40
+  },
+  "Grass_Tall.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 72
+  },
+  "Oak_Ancient.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 1662
+  },
+  "Oak_Young.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 866
+  },
+  "Pine_Tall.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 536
+  },
+  "Reeds.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 264
+  },
+  "Spruce_Short.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 468
+  },
+  "Wildflowers.blend": {
+    "single_object": true,
+    "origin_at_ground": true,
+    "fbx_reimport": true,
+    "triangles": 720
+  }
+}

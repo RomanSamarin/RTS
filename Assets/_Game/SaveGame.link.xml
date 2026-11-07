@@ -1,0 +1,4 @@
+<linker>
+  <!-- Сохранения читают закрытые поля игровых типов через reflection. -->
+  <assembly fullname="Assembly-CSharp" preserve="all" />
+</linker>

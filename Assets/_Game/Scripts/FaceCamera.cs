@@ -15,6 +15,7 @@ public class FaceCamera : MonoBehaviour
 
     private void Update()
     {
+        if(SaveGameManager.IsLoading)return;
         if (facingCamera)
         {
             localTrans.LookAt(2 * localTrans.position - facingCamera.transform.position);

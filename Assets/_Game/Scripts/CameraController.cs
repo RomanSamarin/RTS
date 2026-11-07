@@ -8,18 +8,18 @@ public class CameraController : MonoBehaviour
 
     [Header("Rotation Settings")]
     public float rotationSpeed = 120f;
-    public float minPitch = 25f; 
-    public float maxPitch = 60f; 
+    public float minPitch = 25f;
+    public float maxPitch = 60f;
 
     [Header("Zoom Settings")]
     public float zoomSpeed = 10f;
-    public float minZoomDist = 5f;  
-    public float maxZoomDist = 60f; 
+    public float minZoomDist = 5f;
+    public float maxZoomDist = 60f;
 
     [Header("Ground Prevention")]
-    public float minHeightAboveGround = 2f; 
+    public float minHeightAboveGround = 2f;
 
-    private Transform cameraTransform; 
+    private Transform cameraTransform;
     private Vector3 targetPosition;
     private float targetZoom;
     private float targetYaw;
@@ -36,11 +36,12 @@ public class CameraController : MonoBehaviour
 
         targetPosition = transform.position;
         targetYaw = transform.eulerAngles.y;
-        targetZoom = (minZoomDist + maxZoomDist) / 2f; 
+        targetZoom = (minZoomDist + maxZoomDist) / 2f;
     }
 
     void Update()
     {
+        if(SaveGameManager.IsLoading)return;
         if (cameraTransform == null) return;
 
         HandleInput();
@@ -62,10 +63,10 @@ public class CameraController : MonoBehaviour
 
         float multiplier = Input.GetKey(KeyCode.LeftShift) ? fastMultiplier : 1f;
         Vector3 moveDirection = (forward * ver + right * hor).normalized;
-        
+
         targetPosition += moveDirection * moveSpeed * multiplier * Time.deltaTime;
 
-        if (Input.GetMouseButton(2)) 
+        if (Input.GetMouseButton(2))
         {
             float mouseX = Input.GetAxis("Mouse X");
             targetYaw += mouseX * rotationSpeed * 1.5f * Time.deltaTime;
@@ -89,13 +90,13 @@ public class CameraController : MonoBehaviour
     private void ApplySmoothMovement()
     {
         transform.position = Vector3.Lerp(transform.position, targetPosition, Time.deltaTime * 8f);
-        
+
         float currentYaw = Mathf.LerpAngle(transform.eulerAngles.y, targetYaw, Time.deltaTime * 10f);
         transform.rotation = Quaternion.Euler(0f, currentYaw, 0f);
 
         float zoomProgress = (targetZoom - minZoomDist) / (maxZoomDist - minZoomDist);
         float targetPitch = Mathf.Lerp(minPitch, maxPitch, zoomProgress);
-        
+
         Quaternion targetCameraRotation = Quaternion.Euler(targetPitch, 0f, 0f);
         cameraTransform.localRotation = Quaternion.Slerp(cameraTransform.localRotation, targetCameraRotation, Time.deltaTime * 10f);
 

@@ -14,8 +14,8 @@ using UnityEngine.UI;
 /// назначаются вручную в полях ниже (например, кнопки из меню этого здания).
 ///
 /// Найм — это смена роли Villager → выбранная профессия. Увольнение —
-/// обратно в Villager. Если включено «Assign Workplace», нанятый рабочий
-/// сдаёт ресурсы именно в это здание, а не в ближайшее подходящее.
+/// обратно в Villager. Каждый нанятый рабочий привязывается к этому зданию
+/// и возвращается сюда после добычи, а строитель — когда нет работы.
 ///
 /// Смена модели: в списке «Profession Models» задаётся префаб юнита для
 /// каждой профессии, а в «Villager Prefab» — префаб обычного жителя.
@@ -48,10 +48,6 @@ public class WorkplaceHiring : MonoBehaviour
     [Tooltip("Радиус, в котором ищутся безработные жители. 0 — искать по всей карте")]
     [Min(0f)]
     public float hireRadius = 0f;
-
-    [Tooltip("Привязывать нанятого рабочего к этому зданию: он будет сдавать " +
-             "ресурсы именно сюда. Выключите, если профессии не нужна привязка")]
-    public bool assignWorkplace = true;
 
     [Header("Модели юнитов")]
     [Tooltip("Префаб юнита для каждой профессии этого здания. " +
@@ -92,17 +88,23 @@ public class WorkplaceHiring : MonoBehaviour
 
     /// <summary>Лимит рабочих этого здания.</summary>
     public int MaxWorkers => Mathf.Max(0, maxWorkers);
+    public IReadOnlyList<ResourcesMove> Workers { get { CleanupWorkers(); return workers; } }
 
     // ------------------------------------------------------------------ Жизненный цикл
 
     private void Start()
     {
+        var production = GetComponent<RecipeBuilding>();
+        if (production != null) profession = production.Profession;
+        var gathering = GetComponent<GatheringHouse>();
+        if (gathering != null) profession = gathering.Profession;
         BindButtons();
         UpdateCounter();
     }
 
     private void Update()
     {
+        if(SaveGameManager.IsLoading)return;
         // Раз в полсекунды обновляем счётчик: рабочий мог погибнуть,
         // уволиться через другой скрипт или сменить профессию вручную.
         if (Time.time < nextRefreshTime)
@@ -132,6 +134,11 @@ public class WorkplaceHiring : MonoBehaviour
     /// </summary>
     public bool TryHire()
     {
+        if(!BuildingRoadAccess.Allows(this)){Log("нет дороги к зданию");return false;}
+        var production = GetComponent<RecipeBuilding>();
+        if (production != null) profession = production.Profession;
+        var gathering = GetComponent<GatheringHouse>();
+        if (gathering != null) profession = gathering.Profession;
         CleanupWorkers();
 
         if (profession == ResourcesMove.UnitRole.Villager)
@@ -164,7 +171,7 @@ public class WorkplaceHiring : MonoBehaviour
         }
 
         ResourcesMove worker = ReplaceUnitModel(
-            villager, profession, assignWorkplace ? gameObject : null);
+            villager, profession, gameObject);
 
         if (worker == null)
         {
@@ -195,6 +202,11 @@ public class WorkplaceHiring : MonoBehaviour
 
         int last = workers.Count - 1;
         ResourcesMove worker = workers[last];
+        if (worker != null && !worker.CanChangeRole)
+        {
+            Log("сначала разгрузите рабочего — увольнение отменено");
+            return false;
+        }
         workers.RemoveAt(last);
 
         string workerName = worker != null ? worker.name : "рабочий";
@@ -224,7 +236,7 @@ public class WorkplaceHiring : MonoBehaviour
     private ResourcesMove ReplaceUnitModel(
         ResourcesMove current, ResourcesMove.UnitRole newRole, GameObject workplace)
     {
-        if (current == null)
+        if (current == null || !current.CanChangeRole)
             return null;
 
         GameObject prefab = FindModelPrefab(newRole);
@@ -369,7 +381,8 @@ public class WorkplaceHiring : MonoBehaviour
 
         foreach (ResourcesMove candidate in all)
         {
-            if (candidate == null || !candidate.IsUnemployed)
+            if(candidate!=null&&!FactionMember.CanUse(candidate.gameObject,gameObject))continue;
+            if (candidate == null || !candidate.IsUnemployed || !candidate.CanChangeRole)
                 continue;
 
             float distance = Vector3.Distance(origin, candidate.transform.position);
@@ -403,13 +416,13 @@ public class WorkplaceHiring : MonoBehaviour
                 continue;
             }
 
-            if (worker.Role != profession)
+            if (worker.Role != profession||!FactionMember.CanUse(worker.gameObject,gameObject))
             {
                 workers.RemoveAt(i);
                 continue;
             }
 
-            if (assignWorkplace && worker.AssignedWorkplace != gameObject)
+            if (worker.AssignedWorkplace != gameObject)
                 workers.RemoveAt(i);
         }
     }
@@ -451,6 +464,15 @@ public class WorkplaceHiring : MonoBehaviour
             case ResourcesMove.UnitRole.StoneMason: return "каменщик";
             case ResourcesMove.UnitRole.Builder: return "строитель";
             case ResourcesMove.UnitRole.Villager: return "житель";
+            case ResourcesMove.UnitRole.Miner: return "шахтёр";
+            case ResourcesMove.UnitRole.Farmer: return "фермер";
+            case ResourcesMove.UnitRole.Miller: return "мельник";
+            case ResourcesMove.UnitRole.Baker: return "пекарь";
+            case ResourcesMove.UnitRole.Smoker: return "коптильщик";
+            case ResourcesMove.UnitRole.Blacksmith: return "кузнец";
+            case ResourcesMove.UnitRole.Craftsman: return "мастер";
+            case ResourcesMove.UnitRole.Hunter: return "охотник";
+            case ResourcesMove.UnitRole.BerryGatherer: return "сборщик ягод";
             default: return role.ToString();
         }
     }

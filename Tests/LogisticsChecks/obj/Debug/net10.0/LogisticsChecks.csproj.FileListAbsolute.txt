@@ -1,0 +1,15 @@
+C:\UnityProject\RTS\Tests\LogisticsChecks\bin\Debug\net10.0\LogisticsChecks.exe
+C:\UnityProject\RTS\Tests\LogisticsChecks\bin\Debug\net10.0\LogisticsChecks.deps.json
+C:\UnityProject\RTS\Tests\LogisticsChecks\bin\Debug\net10.0\LogisticsChecks.runtimeconfig.json
+C:\UnityProject\RTS\Tests\LogisticsChecks\bin\Debug\net10.0\LogisticsChecks.dll
+C:\UnityProject\RTS\Tests\LogisticsChecks\bin\Debug\net10.0\LogisticsChecks.pdb
+C:\UnityProject\RTS\Tests\LogisticsChecks\obj\Debug\net10.0\LogisticsChecks.GeneratedMSBuildEditorConfig.editorconfig
+C:\UnityProject\RTS\Tests\LogisticsChecks\obj\Debug\net10.0\LogisticsChecks.AssemblyInfoInputs.cache
+C:\UnityProject\RTS\Tests\LogisticsChecks\obj\Debug\net10.0\LogisticsChecks.AssemblyInfo.cs
+C:\UnityProject\RTS\Tests\LogisticsChecks\obj\Debug\net10.0\LogisticsChecks.csproj.CoreCompileInputs.cache
+C:\UnityProject\RTS\Tests\LogisticsChecks\obj\Debug\net10.0\LogisticsChecks.sourcelink.json
+C:\UnityProject\RTS\Tests\LogisticsChecks\obj\Debug\net10.0\LogisticsChecks.dll
+C:\UnityProject\RTS\Tests\LogisticsChecks\obj\Debug\net10.0\refint\LogisticsChecks.dll
+C:\UnityProject\RTS\Tests\LogisticsChecks\obj\Debug\net10.0\LogisticsChecks.pdb
+C:\UnityProject\RTS\Tests\LogisticsChecks\obj\Debug\net10.0\LogisticsChecks.genruntimeconfig.cache
+C:\UnityProject\RTS\Tests\LogisticsChecks\obj\Debug\net10.0\ref\LogisticsChecks.dll

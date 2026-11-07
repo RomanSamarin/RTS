@@ -11,12 +11,58 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8e0494c37c20db94e994c1fad78446de, type: 3}
   m_Name: Database
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier:
   objectsData:
+  - <Name>k__BackingField: Hospital
+    <ID>k__BackingField: 70
+    description: Automatic recovery for wounded soldiers; beds and delivered food
+    <Size>k__BackingField: {x: 2, y: 2}
+    <Prefab>k__BackingField: {fileID: 7210894049322588998, guid: 57ba24e1066840a8bd1c8a8122c09377, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 40
+    - resource: Stone
+      amount: 20
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: Stable
+    <ID>k__BackingField: 69
+    description: Horses for carts and cavalry
+    <Size>k__BackingField: {x: 2, y: 2}
+    <Prefab>k__BackingField: {fileID: 7210894049322588998, guid: f16ae3e08f204b24a41cfd76d090d731, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 40
+    - resource: Stone
+      amount: 20
+    - resource: Gold
+      amount: 10
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: Gate
+    <ID>k__BackingField: 68
+    description: Gate upgrade for a completed wall segment
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 1000, guid: bf32ff74a2844ab6b35b80397fb2cfb9, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 15
+    - resource: Stone
+      amount: 10
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: Wall
+    <ID>k__BackingField: 67
+    description: Wall section with physical material delivery
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 7210894049322588998, guid: bd399e59199b9264986a872ec6e5874c, type: 3}
+    <requirements>k__BackingField:
+    - resource: Stone
+      amount: 5
+    - resource: Wood
+      amount: 1
+    <benefits>k__BackingField: []
   - <Name>k__BackingField: Barracks
     <ID>k__BackingField: 0
-    description: 
-    <Size>k__BackingField: {x: 5, y: 5}
+    description:
+    <Size>k__BackingField: {x: 1, y: 1}
     <Prefab>k__BackingField: {fileID: 1135194445272333310, guid: 97ad70686f95b984e808d416f335bc82, type: 3}
     <requirements>k__BackingField:
     - resource: Wheat
@@ -28,9 +74,9 @@ MonoBehaviour:
     <benefits>k__BackingField: []
   - <Name>k__BackingField: SawMill
     <ID>k__BackingField: 1
-    description: 
-    <Size>k__BackingField: {x: 5, y: 5}
-    <Prefab>k__BackingField: {fileID: 7582387407367415735, guid: 3237bef27c688c24c8b864de4f9a8645, type: 3}
+    description:
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 5294629949401722039, guid: e65bca1ef28ae1d41b8ac81aea146edd, type: 3}
     <requirements>k__BackingField:
     - resource: Wheat
       amount: 0
@@ -39,11 +85,11 @@ MonoBehaviour:
     - resource: Wood
       amount: 50
     <benefits>k__BackingField: []
-  - <Name>k__BackingField: Sawmill
-    <ID>k__BackingField: 2
-    description: 
-    <Size>k__BackingField: {x: 2, y: 2}
-    <Prefab>k__BackingField: {fileID: 7582387407367415735, guid: 3237bef27c688c24c8b864de4f9a8645, type: 3}
+  - <Name>k__BackingField: StoneQuarry
+    <ID>k__BackingField: 3
+    description:
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 6479444647298130926, guid: 6e63dbc499fcb7d4bbdcf99a09e4e0d0, type: 3}
     <requirements>k__BackingField:
     - resource: Wheat
       amount: 0
@@ -51,4 +97,41 @@ MonoBehaviour:
       amount: 50
     - resource: Wood
       amount: 50
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: Quarry
+    <ID>k__BackingField: 2
+    description:
+    <Size>k__BackingField: {x: 5, y: 5}
+    <Prefab>k__BackingField: {fileID: 7634822165272926485, guid: c2a1917da73c9ba44b3a7a96c7b5ee86, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wheat
+      amount: 0
+    - resource: Stone
+      amount: 50
+    - resource: Wood
+      amount: 50
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: Quarry
+    <ID>k__BackingField: 2
+    description:
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 7634822165272926485, guid: c2a1917da73c9ba44b3a7a96c7b5ee86, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wheat
+      amount: 0
+    - resource: Stone
+      amount: 50
+    - resource: Wood
+      amount: 50
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: Smokehouse
+    <ID>k__BackingField: 71
+    description: Raw fish or meat into prepared food
+    <Size>k__BackingField: {x: 2, y: 2}
+    <Prefab>k__BackingField: {fileID: 7210894049322588998, guid: 93c09388b0734f9396630f89020f748c, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 25
+    - resource: Stone
+      amount: 10
     <benefits>k__BackingField: []

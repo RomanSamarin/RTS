@@ -4,6 +4,30 @@ using UnityEngine;
 // Используется и при проверке ресурсов (BuyBuilding), и при списании (PlacementSystem).
 public static class BuildCost
 {
+    public static System.Collections.Generic.Dictionary<_Game.Scripts.UI.ResourceType,int> GetMaterials(ObjectData data)
+    {
+        var result = new System.Collections.Generic.Dictionary<_Game.Scripts.UI.ResourceType,int>();
+        if (data?.requirements == null) return result;
+        foreach (var req in data.requirements)
+        {
+            if (!System.Enum.TryParse(req.resource, true, out _Game.Scripts.UI.ResourceType type)
+                || !System.Enum.IsDefined(typeof(_Game.Scripts.UI.ResourceType), type) || req.amount < 0)
+                throw new System.ArgumentException("Некорректная стоимость здания: " + req.resource);
+            result.TryGetValue(type, out int previous);
+            result[type] = checked(previous + req.amount);
+        }
+        return result;
+    }
+    public static bool CanAfford(ObjectData data)
+    {
+        foreach (var item in GetMaterials(data))
+        {
+            int total = 0;
+            foreach (var store in _Game.Scripts.UI.WarehouseStorage.All) if(FactionMember.IsPlayer(store.gameObject)&&BuildingRoadAccess.Allows(store))total += store.AvailableMaterial(item.Key);
+            if (total < item.Value) return false;
+        }
+        return true;
+    }
     public static void Get(ObjectData data, out int wood, out int stone, out int wheat, out int fish)
     {
         wood = 0;

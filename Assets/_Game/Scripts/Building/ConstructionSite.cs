@@ -35,7 +35,7 @@ public class ConstructionSite : MonoBehaviour
     /// <summary>
     /// Ближайшая площадка, на которую ещё есть свободное место для строителя.
     /// </summary>
-    public static ConstructionSite FindNearest(Vector3 position, float maxDistance = 200f)
+    public static ConstructionSite FindNearest(Vector3 position, float maxDistance = 200f,Faction? owner=null)
     {
         CleanupList();
 
@@ -46,6 +46,7 @@ public class ConstructionSite : MonoBehaviour
         {
             if (site == null || !site.IsAvailable || !site.HasFreeSlot)
                 continue;
+            if(owner.HasValue&&!FactionRules.AreAllies(owner.Value,FactionMember.Of(site.gameObject)))continue;
 
             float sqr = (site.transform.position - position).sqrMagnitude;
             if (sqr >= nearestSqr)
@@ -93,6 +94,13 @@ public class ConstructionSite : MonoBehaviour
 
     // Здание, которое появится после окончания стройки
     private GameObject building;
+    public GameObject Building=>building;
+    public bool IsNearWorkArea(Vector3 point)
+    {
+        Vector3 delta=point-transform.TransformPoint(footprintCenter);delta.y=0;
+        float radius=Mathf.Max(footprintSize.x,footprintSize.y)*.5f+3f;
+        return delta.sqrMagnitude<=radius*radius;
+    }
 
     // Фактический центр и размер меша здания в локальных координатах.
     // Нужны, потому что pivot префаба часто стоит не в центре постройки.
@@ -110,6 +118,9 @@ public class ConstructionSite : MonoBehaviour
     private const float BarPixelHeight = 30f;
 
     private bool completed;
+    public ConstructionMaterials Materials { get; set; }
+    public int CompletionObjectId=-1;
+    public bool MaterialsReady => Materials == null || Materials.Ready;
 
     // ------------------------------------------------------------------ Свойства
 
@@ -118,6 +129,11 @@ public class ConstructionSite : MonoBehaviour
 
     /// <summary>Стройка ещё идёт и здание существует.</summary>
     public bool IsAvailable => !completed && building != null;
+    public bool OverlapsRoadCell(Vector3 world,float halfWidth)
+    {
+        Vector3 point=transform.InverseTransformPoint(world)-footprintCenter;
+        return Mathf.Abs(point.x)<footprintSize.x*.5f+halfWidth-.05f && Mathf.Abs(point.z)<footprintSize.y*.5f+halfWidth-.05f;
+    }
 
     /// <summary>Есть место для ещё одного строителя.</summary>
     public bool HasFreeSlot => builders.Count < Mathf.Max(1, maxBuilders);
@@ -143,6 +159,7 @@ public class ConstructionSite : MonoBehaviour
             return null;
 
         GameObject root = new GameObject($"ConstructionSite_{building.name}");
+        FactionMember.Set(root,FactionMember.Of(building));
         root.transform.SetPositionAndRotation(building.transform.position, building.transform.rotation);
 
         ConstructionSite site = root.AddComponent<ConstructionSite>();
@@ -162,8 +179,18 @@ public class ConstructionSite : MonoBehaviour
         building.SetActive(false);
 
         site.CreateVisual();
+        site.CreateSelectionCollider();
 
         return site;
+    }
+    private void CreateSelectionCollider()
+    {
+        // У каркаса удалены физические коллайдеры. Триггер позволяет выбрать его для приказа.
+        var selection=GetComponent<BoxCollider>();if(selection==null)selection=gameObject.AddComponent<BoxCollider>();
+        float height=Mathf.Max(1f,barHeight-.8f);
+        selection.isTrigger=true;
+        selection.center=new Vector3(footprintCenter.x,height*.5f,footprintCenter.z);
+        selection.size=new Vector3(Mathf.Max(.2f,footprintSize.x),height,Mathf.Max(.2f,footprintSize.y));
     }
 
     // ------------------------------------------------------------------ Unity
@@ -176,6 +203,7 @@ public class ConstructionSite : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (Materials != null) Materials.ReleaseAll();
         allSites.Remove(this);
 
         // Площадку снесли до окончания стройки — освобождаем строителей.
@@ -190,6 +218,7 @@ public class ConstructionSite : MonoBehaviour
 
     private void Update()
     {
+        if(SaveGameManager.IsLoading)return;
         // Здание снесли через режим удаления — площадка больше не нужна.
         if (building == null)
         {
@@ -209,7 +238,7 @@ public class ConstructionSite : MonoBehaviour
                 speed += Mathf.Max(0f, builders[i].WorkSpeed);
         }
 
-        if (speed > 0f)
+        if (speed > 0f && MaterialsReady)
         {
             Progress01 += Time.deltaTime * speed / Mathf.Max(0.1f, buildTime);
 
@@ -226,6 +255,7 @@ public class ConstructionSite : MonoBehaviour
 
     private void LateUpdate()
     {
+        if(SaveGameManager.IsLoading)return;
         // Шкала всегда повёрнута к камере.
         if (barRoot != null && Camera.main != null)
             barRoot.transform.rotation = Camera.main.transform.rotation;
@@ -239,7 +269,7 @@ public class ConstructionSite : MonoBehaviour
     /// </summary>
     public bool RegisterBuilder(Builder builder)
     {
-        if (builder == null || !IsAvailable)
+        if (builder == null || !IsAvailable || !MaterialsReady)
             return false;
 
         if (builders.Contains(builder))
@@ -338,6 +368,7 @@ public class ConstructionSite : MonoBehaviour
                 constructable.ConstructableWasPlaced();
         }
 
+        if(CompletionObjectId>=0)PlacementSystem.Instance?.ApplySavedBenefits(CompletionObjectId);
         Completed?.Invoke(this);
 
         Debug.Log($"[ConstructionSite] Стройка {name} завершена.", this);
@@ -396,8 +427,9 @@ public class ConstructionSite : MonoBehaviour
     /// </summary>
     private void BuildDefaultVisual()
     {
-        float width = footprintSize.x * 0.95f;
-        float depth = footprintSize.y * 0.95f;
+        float footprintFactor = building != null && building.GetComponent<WallSegment>() != null ? 1f : 0.95f;
+        float width = footprintSize.x * footprintFactor;
+        float depth = footprintSize.y * footprintFactor;
         Vector3 center = new Vector3(footprintCenter.x, 0f, footprintCenter.z);
 
         CreatePart("Foundation", PrimitiveType.Cube,

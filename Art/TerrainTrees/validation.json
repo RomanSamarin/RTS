@@ -1,0 +1,34 @@
+{
+  "Birch.blend": {
+    "scene_objects": 1,
+    "vertices": 791
+  },
+  "DeadTree.blend": {
+    "scene_objects": 1,
+    "vertices": 287
+  },
+  "Oak_Large.blend": {
+    "scene_objects": 1,
+    "vertices": 392
+  },
+  "Oak_Medium.blend": {
+    "scene_objects": 1,
+    "vertices": 392
+  },
+  "Oak_Small.blend": {
+    "scene_objects": 1,
+    "vertices": 392
+  },
+  "Pine_Large.blend": {
+    "scene_objects": 1,
+    "vertices": 251
+  },
+  "Pine_Medium.blend": {
+    "scene_objects": 1,
+    "vertices": 251
+  },
+  "Pine_Small.blend": {
+    "scene_objects": 1,
+    "vertices": 251
+  }
+}

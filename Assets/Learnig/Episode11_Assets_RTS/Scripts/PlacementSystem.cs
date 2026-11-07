@@ -10,9 +10,17 @@ public class PlacementSystem : MonoBehaviour
 
     // База данных, назначенная в инспекторе (нужна другим скриптам, например BuyBuilding)
     public ObjectsDatabseSO Database => database;
+    public void CancelPlacement() { StopPlacement(); }
+    public GridData SavedFurnitureData=>furnitureData;
+    public void ApplySavedBenefits(int id)
+    {if(database!=null)foreach(var data in database.objectsData)if(data.ID==id){ApplyBenefits(data);break;}}
+    public void RestoreSavedPlacementHooks()
+    {furnitureData?.RestoreSavedDestructionHooks(objectPlacer);floorData?.RestoreSavedDestructionHooks(objectPlacer);}
 
     // true, пока игрок выбирает место для здания или сносит его
     public bool IsPlacing => buildingState != null;
+    private int placementEndedFrame = -1;
+    public bool BlocksUnitInput => IsPlacing || placementEndedFrame == Time.frameCount;
 
     [SerializeField] private InputManager inputManager;
     [SerializeField] private Grid grid;
@@ -77,6 +85,12 @@ public class PlacementSystem : MonoBehaviour
 
     public void StartPlacement(int ID)
     {
+        // Обычные кнопки BuyBuilding тоже должны включать рисование стены.
+        var requested = database != null ? database.objectsData.Find(item => item.ID == ID) : null;
+        if (requested != null && requested.Prefab != null && requested.Prefab.GetComponent<WallGate>() != null)
+        { StartGatePlacement(ID); return; }
+        if (requested != null && requested.Prefab != null && requested.Prefab.GetComponent<WallSegment>() != null)
+        { StartWallPlacement(ID); return; }
         // Перед режимом строительства закрываем меню выбранного здания.
         if (BuildingSelectionManager.Instance != null)
             BuildingSelectionManager.Instance.DeselectCurrent();
@@ -92,7 +106,43 @@ public class PlacementSystem : MonoBehaviour
         StopPlacement();
 
         buildingState = new PlacementState(ID, grid, previewSystem, database, floorData, furnitureData, objectPlacer);
+        inputManager.SuppressWorldClickThisFrame();
 
+        inputManager.OnClicked += PlaceStructure;
+        inputManager.OnExit += StopPlacement;
+    }
+
+    // Кнопка UI передаёт ID секции стены из той же базы, что и здания.
+    public void StartGatePlacement() { StartGatePlacement(68); }
+    public void StartGatePlacement(int ID)
+    {
+        StopPlacement();
+        var data = database != null ? database.objectsData.Find(item => item.ID == ID) : null;
+        if (data == null || data.Prefab == null || data.Prefab.GetComponent<WallGate>() == null || data.Size != Vector2Int.one
+            || grid == null || furnitureData == null || objectPlacer == null || inputManager == null)
+        { Debug.LogWarning("[Ворота] Нужна запись базы 1×1 с префабом WallGate и настроенный PlacementSystem.", this); return; }
+        BuildingSelectionManager.Instance?.DeselectCurrent();
+        buildingState = new GatePlacementState(data, grid, furnitureData, objectPlacer, GetBuildTime(data), constructionSitePrefab);
+        inputManager.SuppressWorldClickThisFrame();
+        inputManager.OnClicked += PlaceStructure; inputManager.OnExit += StopPlacement;
+        Debug.Log("[Ворота] Выберите достроенную секцию стены. Escape/ПКМ — отмена.", this);
+    }
+
+    public void StartWallPlacement(int ID)
+    {
+        StopPlacement();
+        var data = database != null ? database.objectsData.Find(item => item.ID == ID) : null;
+        if (data == null || data.Prefab == null || data.Prefab.GetComponent<WallSegment>() == null
+            || data.Size != Vector2Int.one || PlacementState.IsFloorID(ID))
+        { Debug.LogWarning("Для стены нужна запись базы размером 1×1 с WallSegment на префабе.", this); return; }
+        if (grid == null || inputManager == null || objectPlacer == null || furnitureData == null)
+        { Debug.LogWarning("PlacementSystem ещё не настроен или не запущен.", this); return; }
+        BuildingSelectionManager.Instance?.DeselectCurrent();
+        selectedID = ID;
+        buildingState = new WallPlacementState(data, grid, furnitureData, objectPlacer, inputManager,
+            GetBuildTime(data), constructionSitePrefab);
+        Debug.Log("[Стены] Режим включён. Первый клик по земле — начало, второй — конец участка.", this);
+        inputManager.SuppressWorldClickThisFrame();
         inputManager.OnClicked += PlaceStructure;
         inputManager.OnExit += StopPlacement;
     }
@@ -106,6 +156,7 @@ public class PlacementSystem : MonoBehaviour
         StopPlacement();
 
         buildingState = new RemovingState(grid, previewSystem, floorData, furnitureData, objectPlacer);
+        inputManager.SuppressWorldClickThisFrame();
 
         inputManager.OnClicked += PlaceStructure;
         inputManager.OnExit += StopPlacement;
@@ -113,13 +164,23 @@ public class PlacementSystem : MonoBehaviour
 
     private void PlaceStructure()
     {
-        if(inputManager.IsPointerOverUI()){
-            Debug.Log("Pointer was over UI - Returned");
-            return;
-        }
+        if (buildingState == null || inputManager.IsPointerOverUI()) return;
 
         Vector3 mousePosition = inputManager.GetSelectedMapPosition();
         Vector3Int gridPosition = grid.WorldToCell(mousePosition);
+
+        if (buildingState is WallPlacementState walls)
+        {
+            if (inputManager.TryGetSelectedMapPosition(out mousePosition))
+                walls.OnAction(grid.WorldToCell(mousePosition));
+            else Debug.LogWarning("[Стены] Курсор не попал в землю. Проверьте Scene Camera, коллайдер земли и Placement Layer Mask у InputManager.", this);
+            return;
+        }
+        if (buildingState is GatePlacementState gates)
+        {
+            if (inputManager.TryGetSelectedMapPosition(out mousePosition) && gates.OnAction(grid.WorldToCell(mousePosition))) StopPlacement();
+            return;
+        }
 
         ObjectData ob = database.GetObjectByID(selectedID);
 
@@ -134,20 +195,37 @@ public class PlacementSystem : MonoBehaviour
         // Страховка: ресурсы могли потратить, пока игрок выбирал место
         BuildCost.Get(ob, out int wood, out int stone, out int wheat, out int fish);
 
-        if (ResourcesManager.Instance != null &&
-            !ResourcesManager.Instance.HasEnough(wood, stone, wheat, fish))
+        if (!BuildCost.CanAfford(ob))
         {
             Debug.LogWarning($"[PlacementSystem] Недостаточно ресурсов для постройки \"{ob.Name}\" — размещение отменено.");
             StopPlacement();
             return;
         }
 
-        bool placed = buildingState.OnAction(gridPosition);
+        bool physicalConstruction = useConstructionSites && !PlacementState.IsFloorID(ob.ID);
+        ConstructionMaterials materials = null;
+        if (physicalConstruction)
+        {
+            materials = new GameObject("ConstructionMaterials").AddComponent<ConstructionMaterials>();
+            if (!materials.Initialize(BuildCost.GetMaterials(ob)))
+            {
+                Destroy(materials.gameObject);
+                StopPlacement();
+                return;
+            }
+        }
+        bool placed;
+        try { placed = buildingState.OnAction(gridPosition); }
+        catch
+        {
+            if (materials != null) { materials.ReleaseAll(); Destroy(materials.gameObject); }
+            throw;
+        }
 
         if (placed)
         {
             // ---- Списываем ресурсы только если здание реально поставлено ---- //
-            SpendResources(ob, wood, stone, wheat, fish);
+            if (!physicalConstruction) SpendResources(ob, wood, stone, wheat, fish);
 
             // ---- Ставим стройплощадку вместо готового здания ---- //
             PlacementState placement = buildingState as PlacementState;
@@ -161,8 +239,10 @@ public class PlacementSystem : MonoBehaviour
 
                 if (site != null)
                 {
+                    site.Materials = materials;
+                    materials.transform.SetParent(site.transform, false);
                     // Бонусы (например, жильё) начисляем только после окончания стройки.
-                    site.Completed += _ => ApplyBenefits(ob);
+                    site.CompletionObjectId=ob.ID;
                     Debug.Log($"[PlacementSystem] Начата стройка \"{ob.Name}\": {buildTime:0.#} с одним строителем. " +
                               $"Строителей можно назначить: до {site.MaxBuilders}.");
 
@@ -175,7 +255,9 @@ public class PlacementSystem : MonoBehaviour
                 }
                 else
                 {
-                    ApplyBenefits(ob);
+                    materials.ReleaseAll();
+                    Destroy(materials.gameObject);
+                    Destroy(building);
                 }
             }
             else
@@ -192,6 +274,7 @@ public class PlacementSystem : MonoBehaviour
         }
         else
         {
+            if (materials != null) { materials.ReleaseAll(); Destroy(materials.gameObject); }
             Debug.Log("[PlacementSystem] Клетка занята — здание не построено, ресурсы не списаны.");
         }
 
@@ -258,8 +341,9 @@ public class PlacementSystem : MonoBehaviour
     {
         if (buildingState == null)
             return;
-       
+
         buildingState.EndState();
+        placementEndedFrame = Time.frameCount;
 
         inputManager.OnClicked -= PlaceStructure;
         inputManager.OnExit -= StopPlacement;
@@ -275,6 +359,25 @@ public class PlacementSystem : MonoBehaviour
         // So there is no need to show cell indicator
         if (buildingState == null)
             return;
+
+        if (buildingState is GatePlacementState gates)
+        {
+            if (Input.GetMouseButtonDown(1)) { StopPlacement(); return; }
+            if (!inputManager.IsPointerOverUI() && inputManager.TryGetSelectedMapPosition(out var point))
+                gates.UpdateState(grid.WorldToCell(point));
+            else gates.HidePreview();
+            return;
+        }
+        if (buildingState is WallPlacementState walls)
+        {
+            if (Input.GetMouseButtonDown(1)) { StopPlacement(); return; }
+            if (Input.GetKeyDown(KeyCode.R))
+                walls.Rotate(Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift) ? -1 : 1);
+            if (!inputManager.IsPointerOverUI() && inputManager.TryGetSelectedMapPosition(out var point))
+                walls.UpdateState(grid.WorldToCell(point));
+            else walls.HidePreview();
+            return;
+        }
 
         bool rotationChanged = HandleRotationInput();
 
@@ -305,4 +408,6 @@ public class PlacementSystem : MonoBehaviour
         Debug.Log($"[PlacementSystem] Поворот здания: {Mathf.RoundToInt(placementState.Rotation.eulerAngles.y)}°");
         return true;
     }
+
+    private void OnDisable() { StopPlacement(); }
 }

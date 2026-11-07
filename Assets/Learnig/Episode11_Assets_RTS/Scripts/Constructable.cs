@@ -27,15 +27,19 @@ public class Constructable : MonoBehaviour
     private void ActivateObstacle()
     {
         obstacle = GetComponentInChildren<NavMeshObstacle>();
-        obstacle.enabled = true;
+
+        // У части зданий препятствия может не быть — тогда просто пропускаем,
+        // чтобы окончание стройки не прерывалось исключением.
+        if (obstacle != null)
+            obstacle.enabled = true;
     }
     internal void TakeDamage(int damageToInflict, GameObject attacker)
     {
-        Health -= damageToInflict;
-
-        if (Health <= 0)
+        BuildingHealth health = GetComponent<BuildingHealth>();
+        if (health != null)
         {
-            Destroy(attacker);
+            health.TakeDamage(damageToInflict,attacker);
+            Health = health.CurrentHealth;
         }
     }
 }

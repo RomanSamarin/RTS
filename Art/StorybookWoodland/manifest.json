@@ -1,0 +1,77 @@
+{
+  "Oak_Ancient": {
+    "vertices": 887,
+    "triangles": 1662,
+    "materials": 6
+  },
+  "Oak_Young": {
+    "vertices": 467,
+    "triangles": 866,
+    "materials": 6
+  },
+  "Pine_Tall": {
+    "vertices": 290,
+    "triangles": 536,
+    "materials": 4
+  },
+  "Spruce_Short": {
+    "vertices": 254,
+    "triangles": 468,
+    "materials": 4
+  },
+  "Birch": {
+    "vertices": 701,
+    "triangles": 1282,
+    "materials": 7
+  },
+  "DeadTree": {
+    "vertices": 453,
+    "triangles": 798,
+    "materials": 1
+  },
+  "Bush_Broad": {
+    "vertices": 330,
+    "triangles": 484,
+    "materials": 5
+  },
+  "Bush_Round": {
+    "vertices": 192,
+    "triangles": 320,
+    "materials": 5
+  },
+  "Bush_Berry": {
+    "vertices": 546,
+    "triangles": 844,
+    "materials": 6
+  },
+  "Grass_Tall": {
+    "vertices": 54,
+    "triangles": 72,
+    "materials": 5
+  },
+  "Grass_Medium": {
+    "vertices": 42,
+    "triangles": 56,
+    "materials": 5
+  },
+  "Grass_Small": {
+    "vertices": 30,
+    "triangles": 40,
+    "materials": 5
+  },
+  "Reeds": {
+    "vertices": 168,
+    "triangles": 264,
+    "materials": 3
+  },
+  "Wildflowers": {
+    "vertices": 440,
+    "triangles": 720,
+    "materials": 4
+  },
+  "Fern": {
+    "vertices": 504,
+    "triangles": 672,
+    "materials": 5
+  }
+}

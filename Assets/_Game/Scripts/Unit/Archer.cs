@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.AI;
+using System.Collections.Generic;
 
 /// <summary>
 /// Лучник: стреляет стрелами (Arrow) по цели из AttackController.targetToAttack.
@@ -15,6 +16,10 @@ public class Archer : MonoBehaviour
     [Header("Дальность и темп стрельбы")]
     [Tooltip("С какой дистанции лучник стреляет (UnitFollowState остановит его на этом расстоянии)")]
     public float attackRange = 12f;
+    [Min(0f)] public float closeRange = 3f;
+    [Range(0.1f, 1f)] public float closeRangeDamageMultiplier = 0.4f;
+    [Tooltip("Слои стен и прочих препятствий для стрел. Исключите слой земли, если точка выстрела внутри неё.")]
+    public LayerMask shotBlockingLayers = ~0;
 
     [Tooltip("Пауза между выстрелами в секундах")]
     public float attackCooldown = 1.2f;
@@ -74,9 +79,16 @@ public class Archer : MonoBehaviour
     private GOScript goScript;
     private NavMeshAgent agent;
     private Animator animator;
+    private BattleCombatant battle;
+    private readonly RaycastHit[] shotHits = new RaycastHit[64];
+    private string[] attackStateNames;
+    private static readonly string[] movingStateNames = { "Moving", "Following State" };
+    private static readonly string[] idleStateNames = { "Idle", "idle State" };
+    private static readonly int attackingHash = Animator.StringToHash("isAttacking");
 
     private float cooldown;
     private float searchTimer;
+    private float nextAutoVisibilityCheck;
     private Transform autoTarget;
 
     private float aimTimer;
@@ -95,6 +107,7 @@ public class Archer : MonoBehaviour
         attackController = GetComponent<AttackController>();
         goScript = GetComponent<GOScript>();
         agent = GetComponent<NavMeshAgent>();
+        attackStateNames = new[] { attackAnimationState, "Attack State", "Attack" };
 
         animator = GetComponent<Animator>();
         if (animator == null)
@@ -108,6 +121,7 @@ public class Archer : MonoBehaviour
     {
         cooldown = 0f;
         searchTimer = 0f;
+        nextAutoVisibilityCheck = 0f;
         autoTarget = null;
         aimTimer = 0f;
         aimTarget = null;
@@ -124,6 +138,9 @@ public class Archer : MonoBehaviour
 
     private void Update()
     {
+        if(SaveGameManager.IsLoading)return;
+        if (UnitEat.ControlsMovement(this)) { StopAttackAnimation(); ReleaseRotation(); return; }
+        if (BattleCombatant.BlocksActions(this)) { StopAttackAnimation(); ReleaseRotation(); return; }
         if (cooldown > 0f)
             cooldown -= Time.deltaTime;
 
@@ -152,14 +169,14 @@ public class Archer : MonoBehaviour
             aimTimer = firstShotDelay;
         }
 
-        float distance = Vector3.Distance(transform.position, target.position);
-        if (distance > attackRange)
+        float distanceSquared = (transform.position - target.position).sqrMagnitude;
+        if (distanceSquared > attackRange * attackRange)
         {
             // Цель ушла из зоны — прекращаем анимацию атаки
             StopAttackAnimation();
             ReleaseRotation();
 
-            if (moveIntoRange)
+            if (moveIntoRange && !WallStation.Holding(this) && !BattleCombatant.Defends(this)&&!MilitaryOrders.BlocksChase(this))
                 MoveTowards(target);
 
             // Прицеливание начнётся заново, когда войдём в радиус стрельбы
@@ -206,8 +223,12 @@ public class Archer : MonoBehaviour
         if (cooldown > 0f)
             return;
 
+        if (!HasClearShot(target))
+        { StopAttackAnimation(); cooldown = 0.2f; return; }
+
         Shoot(target);
-        cooldown = attackCooldown;
+        if (battle == null) battle = GetComponent<BattleCombatant>();
+        cooldown = attackCooldown / Mathf.Max(0.1f, battle != null ? battle.AttackRateMultiplier : 1f);
     }
 
     // ------------------------------------------------------------------ Цель
@@ -217,21 +238,29 @@ public class Archer : MonoBehaviour
     {
         if (attackController != null && attackController.targetToAttack != null)
         {
-            if (IsAlive(attackController.targetToAttack))
+            bool lostAutomaticTarget = attackController.targetToAttack == autoTarget
+                && (transform.position - autoTarget.position).sqrMagnitude > attackRange * attackRange;
+            if (!lostAutomaticTarget && autoTarget != null && attackController.targetToAttack == autoTarget && Time.time >= nextAutoVisibilityCheck)
+            {
+                nextAutoVisibilityCheck = Time.time + Mathf.Max(0.2f, targetSearchInterval);
+                lostAutomaticTarget = !HasClearShot(autoTarget);
+            }
+            if (IsAlive(attackController.targetToAttack) && FactionMember.AreEnemies(gameObject,attackController.targetToAttack.gameObject) && MilitaryOrders.AllowsTarget(gameObject,attackController.targetToAttack)&& !lostAutomaticTarget)
                 return attackController.targetToAttack;
 
             attackController.targetToAttack = null;
+            autoTarget = null;
         }
 
-        if (!autoAcquireTarget)
+        if (!autoAcquireTarget || (attackController!=null&&!attackController.autoAcquireTargets))
             return null;
 
-        // Поиск по тегу — не каждый кадр, это дорого
+        // Поиск по реестру владельцев выполняется с интервалом.
         searchTimer -= Time.deltaTime;
-        if (searchTimer > 0f && autoTarget != null && IsAlive(autoTarget))
-            return autoTarget;
+        if (searchTimer > 0f)
+            return autoTarget != null && IsAlive(autoTarget)&&FactionMember.AreEnemies(gameObject,autoTarget.gameObject)&&MilitaryOrders.AllowsTarget(gameObject,autoTarget) ? autoTarget : null;
 
-        searchTimer = targetSearchInterval;
+        searchTimer = Mathf.Max(0.1f, targetSearchInterval);
         autoTarget = FindNearestEnemy();
 
         // Сообщаем остальной системе, что цель есть (анимации, курсор и т.п.)
@@ -243,25 +272,29 @@ public class Archer : MonoBehaviour
 
     private Transform FindNearestEnemy()
     {
-        GameObject[] enemies = GameObject.FindGameObjectsWithTag(enemyTag);
-
         Transform nearest = null;
-        float nearestDistance = attackRange;
+        float nearestDistance = attackRange * attackRange;
 
-        foreach (GameObject enemy in enemies)
+        foreach (var member in FactionMember.All)
         {
+            if(member==null||!FactionMember.AreEnemies(gameObject,member.gameObject))continue;
+            if(!MilitaryOrders.AllowsTarget(gameObject,member.transform))continue;
+            GameObject enemy=member.gameObject;
             if (enemy == null || !enemy.activeInHierarchy)
                 continue;
+
+            float distance = (transform.position - enemy.transform.position).sqrMagnitude;
+            if (distance >= nearestDistance) continue;
 
             Unit unit = enemy.GetComponent<Unit>();
             if (unit == null || unit.unitHealth <= 0f)
                 continue;
 
             // Деревья тоже помечены тегом Enemy — пропускаем всё, что не боевой юнит
-            if (onlyCombatTargets && enemy.GetComponent<AttackController>() == null)
-                continue;
+            var side = enemy.GetComponent<AttackController>();
+            if (onlyCombatTargets && side == null) continue;
+            if (!HasClearShot(enemy.transform)) continue;
 
-            float distance = Vector3.Distance(transform.position, enemy.transform.position);
             if (distance < nearestDistance)
             {
                 nearestDistance = distance;
@@ -287,13 +320,43 @@ public class Archer : MonoBehaviour
         // Включаем анимацию атаки синхронно с выстрелом
         PlayAttackAnimation();
 
-        // Берём поворот из префаба, а не LookRotation: стрела должна сохранить
-        // ориентацию модели, заданную в префабе (поворот вокруг осей, наклон и т.п.).
-        // Довернуть её по направлению полёта Arrow умеет сам — от исходного поворота.
+        // Arrow сам совмещает продольную ось геометрии с касательной траектории.
         Quaternion spawnRotation = arrowPrefab.transform.rotation;
 
         Arrow arrow = Instantiate(arrowPrefab, start, spawnRotation);
-        arrow.Launch(target, damage, arrowSpeed, gameObject, aimHeight);
+        int shotDamage = (transform.position - target.position).sqrMagnitude < closeRange * closeRange
+            ? Mathf.Max(1, Mathf.RoundToInt(damage * closeRangeDamageMultiplier)) : damage;
+        arrow.Launch(target, shotDamage, arrowSpeed, gameObject, aimHeight, shotBlockingLayers.value);
+    }
+
+    private bool HasClearShot(Transform target)
+    {
+        if (arrowPrefab == null) return true; // Shoot выдаст понятное сообщение о неназначенном префабе.
+        Vector3 origin = GetShootPoint();
+        arrowPrefab.FlightPlan(origin, target, arrowSpeed, aimHeight, out var end, out _, out float height);
+        int segments = Mathf.Clamp(Mathf.CeilToInt((Vector3.Distance(origin, end) + height * 2f) / 1.5f), 4, 32);
+        Vector3 from = origin;
+        for (int segment = 1; segment <= segments; segment++)
+        {
+            Vector3 to = ArrowTrajectory.Position(origin, end, (float)segment / segments, height);
+            Vector3 delta = to - from;
+            float distance = delta.magnitude;
+            if (distance > 0.00001f)
+            {
+                int count = Physics.SphereCastNonAlloc(from, arrowPrefab.CollisionRadius, delta / distance,
+                    shotHits, distance, shotBlockingLayers, QueryTriggerInteraction.Ignore);
+                if (count == shotHits.Length) return false;
+                for (int i = 0; i < count; i++)
+                {
+                    Transform hit = shotHits[i].transform;
+                    if (hit == transform || hit.IsChildOf(transform)) continue;
+                    if (hit == target || hit.IsChildOf(target) || target.IsChildOf(hit)) continue;
+                    return false;
+                }
+            }
+            from = to;
+        }
+        return true;
     }
 
     private Vector3 GetShootPoint()
@@ -371,7 +434,7 @@ public class Archer : MonoBehaviour
         if (animator == null || animator.runtimeAnimatorController == null)
             return;
 
-        animator.SetBool("isAttacking", true);
+        animator.SetBool(attackingHash, true);
 
         attackPlaying = true;
         attackLayer = -1;
@@ -403,8 +466,7 @@ public class Archer : MonoBehaviour
         }
     }
 
-    private string[] AttackStateNames =>
-        new[] { attackAnimationState, "Attack State", "Attack" };
+    private string[] AttackStateNames => attackStateNames;
 
     /// <summary>
     /// Проверяет, что анимация атаки всё ещё играет (контроллер мог перевести
@@ -462,7 +524,7 @@ public class Archer : MonoBehaviour
             return;
         }
 
-        animator.SetBool("isAttacking", false);
+        animator.SetBool(attackingHash, false);
 
         if (!attackPlaying)
             return;
@@ -480,9 +542,7 @@ public class Archer : MonoBehaviour
 
     private bool TryCrossFadeLocomotion(int layer, bool moving)
     {
-        string[] stateNames = moving
-            ? new[] { "Moving", "Following State" }
-            : new[] { "Idle", "idle State" };
+        string[] stateNames = moving ? movingStateNames : idleStateNames;
 
         foreach (string stateName in stateNames)
         {
@@ -523,6 +583,9 @@ public class Archer : MonoBehaviour
 
     private static bool IsAlive(Transform target)
     {
+        if (target == null || !target.gameObject.activeInHierarchy) return false;
+        var camp = target.GetComponentInParent<BanditCamp>();
+        if (camp != null) return !camp.IsDestroyed && camp.isActiveAndEnabled;
         Unit unit = target.GetComponent<Unit>();
         if (unit == null) unit = target.GetComponentInParent<Unit>();
 

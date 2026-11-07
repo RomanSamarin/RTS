@@ -185,6 +185,7 @@ public class SoldiersFormation : MonoBehaviour
 
     private void Update()
     {
+        if (Barracks.BlocksWorldInput || RoadBuilder.BlocksWorldInput) return;
         if (toggleKey != KeyCode.None && Input.GetKeyDown(toggleKey))
         {
             TogglePlacement();
@@ -919,32 +920,37 @@ public class SoldiersFormation : MonoBehaviour
     {
         if (placementRoutine != null)
             StopCoroutine(placementRoutine);
+        Vector3 facing = formationRoot != null ? formationRoot.forward : transform.forward;
+        var squadUnits=new List<GameObject>();var squadSlots=new List<Vector3>();
+        foreach(var order in orders){if(order.Unit!=null){squadUnits.Add(order.Unit);squadSlots.Add(order.Destination);}}
+        if(SquadMovement.MoveSlots(squadUnits,squadSlots,facing,true))return;
+        int group = FormationHold.BeginGroup();
 
         if (orderInterval <= 0f || orders.Count <= 1)
         {
             foreach (UnitOrder order in orders)
-                MoveUnit(order.Unit, order.Destination);
+                MoveUnit(order.Unit, order.Destination, facing, group);
 
             return;
         }
 
-        placementRoutine = StartCoroutine(IssueOrdersRoutine(orders));
+        placementRoutine = StartCoroutine(IssueOrdersRoutine(orders, facing, group));
     }
 
-    private IEnumerator IssueOrdersRoutine(List<UnitOrder> orders)
+    private IEnumerator IssueOrdersRoutine(List<UnitOrder> orders, Vector3 facing, int group)
     {
         WaitForSeconds delay = new WaitForSeconds(Mathf.Max(0.01f, orderInterval));
 
         for (int i = 0; i < orders.Count; i++)
         {
-            MoveUnit(orders[i].Unit, orders[i].Destination);
+            MoveUnit(orders[i].Unit, orders[i].Destination, facing, group);
             yield return delay;
         }
 
         placementRoutine = null;
     }
 
-    private static void MoveUnit(GameObject unit, Vector3 destination)
+    private static void MoveUnit(GameObject unit, Vector3 destination, Vector3 facing, int group)
     {
         if (unit == null)
             return;
@@ -963,7 +969,7 @@ public class SoldiersFormation : MonoBehaviour
 
         // Сообщаем Animator-у (UnitHoldingBehaviour на состоянии Idle), что это
         // точка строя: по прибытии включится поза Holding.
-        FormationHold.SetPoint(unit, destination);
+        FormationHold.SetPoint(unit, destination, facing, group);
     }
 
     private void SetPreviewVisible(bool visible)

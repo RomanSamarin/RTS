@@ -12,6 +12,7 @@ public class ObjectPlacer : MonoBehaviour
     {
         // We instantiate the prefab into the cell
         GameObject newObject = Instantiate(prefab, position, rotation);
+        SaveGameManager.Stamp(newObject,prefab);
 
         // Constructable включается позже: либо сразу в PlacementSystem
         // (если стройка отключена / это пол), либо после окончания стройки

@@ -15,9 +15,9 @@ public class UnitFollowState : StateMachineBehaviour
 
     override public void OnStateEnter(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
-        agent = animator.GetComponent<NavMeshAgent>();
-        attackController = animator.GetComponent<AttackController>();
-        archer = animator.GetComponent<Archer>();
+        agent = animator.GetComponentInParent<NavMeshAgent>();
+        attackController = animator.GetComponentInParent<AttackController>();
+        archer = animator.GetComponentInParent<Archer>();
         resourcesMove = animator.GetComponent<ResourcesMove>();
         if (resourcesMove == null) resourcesMove = animator.GetComponentInParent<ResourcesMove>();
         
@@ -30,12 +30,26 @@ public class UnitFollowState : StateMachineBehaviour
 
     override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
-        // Проверка ручного приказа на перемещение игроком
+        if(SaveGameManager.IsLoading)return;
+        if(animator.GetComponentInParent<Catapult>()!=null)return;
+        if (UnitEat.ControlsMovement(animator)) return;
+        if(Builder.ControlsAnimation(animator))return;
+        if (MilitaryOrders.BlocksChase(animator)) return;
+        if (BattleCombatant.BlocksActions(animator) || BattleCombatant.Defends(animator)) return;
+        if (WallStation.Holding(animator)) return;
+        if (animator.GetComponentInParent<FoodCart>() != null || animator.GetComponentInParent<CartHorse>() != null) return;
+        if (resourcesMove != null && resourcesMove.IsTrainingRecruit) return;
+        if (resourcesMove != null && (resourcesMove.IsFoodGatherer || resourcesMove.IsProductionWorker || resourcesMove.role == ResourcesMove.UnitRole.Miner || resourcesMove.role == ResourcesMove.UnitRole.Farmer || resourcesMove.role == ResourcesMove.UnitRole.Carrier)
+            && !resourcesMove.IsReturningToWorkplace) return;
+        // Проверка ручного приказа на перемещение игроком.
+        // Флаг IsFollowing не сбрасываем: иначе во время приказа пропадает
+        // анимация ходьбы и юнит «скользит». Маршрут агента тоже не трогаем —
+        // им управляет GOScript.
         if (goScript != null && goScript.isCommandToMove == true)
-        {
-            animator.SetBool("IsFollowing", false);
             return;
-        }
+
+        if(MeleeApproach.Drive(animator,stopFollowDistance,out bool ready))
+        {animator.SetBool("isAttacking",ready);return;}
 
         if (attackController != null && attackController.targetToAttack != null)
         {
@@ -48,20 +62,28 @@ public class UnitFollowState : StateMachineBehaviour
                 // Для деревьев, врагов и водоёмов точка остаётся прежней.
                 if (resourcesMove != null)
                     destination = resourcesMove.GetApproachPoint(attackController.targetToAttack);
+                var camp = attackController.targetToAttack.GetComponent<BanditCamp>();
+                if (camp != null) destination = camp.CombatPoint(animator.transform.position);
+                if(FactionMember.AreEnemies(attackController.gameObject,attackController.targetToAttack.gameObject))destination=AttackController.CombatPoint(attackController.targetToAttack,animator.transform.position);
 
                 agent.SetDestination(destination);
             }
 
             // Вычисляем дистанцию
             float distanceFromTarget = Vector3.Distance(attackController.targetToAttack.position, animator.transform.position);
+            var targetCamp = attackController.targetToAttack.GetComponent<BanditCamp>();
+            if (targetCamp != null && archer == null) distanceFromTarget = Vector3.Distance(targetCamp.CombatPoint(animator.transform.position), animator.transform.position);
+            if(archer==null&&FactionMember.AreEnemies(attackController.gameObject,attackController.targetToAttack.gameObject))distanceFromTarget=Vector3.Distance(AttackController.CombatPoint(attackController.targetToAttack,animator.transform.position),animator.transform.position);
 
             // Лучник останавливается на своей дистанции стрельбы, а не вплотную к цели
             float stopDistance = stopFollowDistance;
+            if(archer==null&&FactionMember.AreEnemies(attackController.gameObject,attackController.targetToAttack.gameObject))stopDistance=attackController.meleeRange;
             if (archer != null)
                 stopDistance = archer.attackRange;
 
             // Проверяем, к какому объекту подошел юнит (Дерево/Враг, Водоем ИЛИ Жила камня)
-            bool isEnemyOrTree = attackController.targetToAttack.CompareTag("Enemy");
+            bool isEnemyOrTree = FactionMember.AreEnemies(attackController.gameObject,attackController.targetToAttack.gameObject)
+                || FactionMember.IsResource(attackController.targetToAttack.gameObject);
             bool isFishingSpot = attackController.targetToAttack.CompareTag("FishingSpot");
 
             // Жила камня — рабочая цель ТОЛЬКО для каменщика.
@@ -87,8 +109,10 @@ public class UnitFollowState : StateMachineBehaviour
         }
         else
         {
-            // Если цель потеряна, сбрасываем следование
-            animator.SetBool("IsFollowing", false);
+            // Цель потеряна. IsFollowing здесь не сбрасываем: флагом владеет
+            // Unit.Update — он снимает его, только когда юнит реально остановился.
+            // Иначе прерывалась бы анимация ходьбы по приказу игрока
+            // и у безработного жителя, у которого цели нет вообще.
         }
     }
 

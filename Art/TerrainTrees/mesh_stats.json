@@ -1,0 +1,34 @@
+{
+  "Oak_Large": {
+    "vertices": 392,
+    "triangles": 736
+  },
+  "Oak_Medium": {
+    "vertices": 392,
+    "triangles": 736
+  },
+  "Oak_Small": {
+    "vertices": 392,
+    "triangles": 736
+  },
+  "Pine_Large": {
+    "vertices": 251,
+    "triangles": 474
+  },
+  "Pine_Medium": {
+    "vertices": 251,
+    "triangles": 474
+  },
+  "Pine_Small": {
+    "vertices": 251,
+    "triangles": 474
+  },
+  "Birch": {
+    "vertices": 791,
+    "triangles": 1494
+  },
+  "DeadTree": {
+    "vertices": 287,
+    "triangles": 522
+  }
+}

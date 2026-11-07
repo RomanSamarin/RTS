@@ -70,15 +70,27 @@ public class UnitHoldingBehaviour : StateMachineBehaviour
     {
         Cache(animator);
         stillTimer = 0f;
+        if (role == Role.HoldPose && unit != null && BattleCombatant.TypeOf(unit.gameObject) != TroopType.Auto
+            && !FormationHold.TryGetPoint(unit.gameObject, out _) && (goScript == null || !goScript.HasPlayerOrder))
+            FormationHold.SetPoint(unit.gameObject, unit.transform.position);
     }
 
     public override void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
+        if (UnitEat.ControlsMovement(animator)) return;
         if (animator == null)
             return;
 
         if (cachedAnimator != animator)
             Cache(animator);
+        var battle = unit != null ? unit.GetComponent<BattleCombatant>() : null;
+        if (battle != null && (battle.IsStunned || battle.IsDisordered))
+        {
+            stillTimer = 0;
+            if (role == Role.HoldPose && HasState(animator, layerIndex, idleHash))
+                animator.CrossFadeInFixedTime(idleHash, fadeDuration, layerIndex);
+            return;
+        }
 
         if (role == Role.WaitInIdle)
             UpdateWaitInIdle(animator, layerIndex);
@@ -101,15 +113,15 @@ public class UnitHoldingBehaviour : StateMachineBehaviour
         }
 
         // Юнита в строй не отправляли — ничего не делаем
-        GameObject unitObject = animator.gameObject;
+        GameObject unitObject = unit != null ? unit.gameObject : animator.gameObject;
 
         if (!FormationHold.TryGetPoint(unitObject, out Vector3 point))
             return;
 
         // Юнит ушёл со своей точки строя приказом — строй больше не держим
-        if (Vector3.Distance(animator.transform.position, point) > maxDistanceFromPoint)
+        if (Vector3.Distance(unitObject.transform.position, point) > maxDistanceFromPoint)
         {
-            FormationHold.Clear(unitObject);
+            if (unitObject.GetComponent<BattleCombatant>() == null) FormationHold.Clear(unitObject);
             stillTimer = 0f;
             return;
         }
@@ -167,7 +179,7 @@ public class UnitHoldingBehaviour : StateMachineBehaviour
         if (goScript == null)
             goScript = unitObject.GetComponentInParent<GOScript>();
 
-        agent = unitObject.GetComponent<NavMeshAgent>();
+        agent = unitObject.GetComponentInParent<NavMeshAgent>();
 
         unit = unitObject.GetComponent<Unit>();
         if (unit == null)

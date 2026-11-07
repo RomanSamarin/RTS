@@ -86,6 +86,7 @@ public class PlacementState : IBuildingState
 
         int index = objectPlacer.PlaceObject(database.objectsData[selectedObjectIndex].Prefab, grid.CellToWorld(gridPosition), rotation);
         LastPlacedObject = objectPlacer.GetPlacedObject(index);
+        if(!IsFloorID(ID))FactionMember.Set(LastPlacedObject,Faction.Player);
 
         // If this id is a floor id, then its a floor data, else its a furniture data
         GridData selectedData = GetAllFloorIDs().Contains(database.objectsData[selectedObjectIndex].ID) ? floorData : furnitureData;
@@ -94,6 +95,18 @@ public class PlacementState : IBuildingState
             GetRotatedSize(),
             database.objectsData[selectedObjectIndex].ID,
             index);
+
+        if (!IsFloorID(ID))
+        {
+            BuildingHealth health = LastPlacedObject.GetComponent<BuildingHealth>();
+            if (health == null) health = LastPlacedObject.AddComponent<BuildingHealth>();
+            health.Destroyed += _ =>
+            {
+                // Не освобождаем клетки новой постройки, поставленной после сноса.
+                if (selectedData.GetRepresentationIndex(gridPosition) == index)
+                    selectedData.RemoveObjectAt(gridPosition);
+            };
+        }
 
         previewSystem.UpdatePosition(grid.CellToWorld(gridPosition), false);
 
@@ -114,6 +127,13 @@ public class PlacementState : IBuildingState
 
     private bool CheckPlacementValidity(Vector3Int gridPosition, int selectedObjectIndex)
     {
+        if(!IsFloorID(ID) && RoadBuilder.Instance!=null)
+        {
+            Vector2Int size=GetRotatedSize();
+            Vector3 start=grid.CellToWorld(gridPosition),end=grid.CellToWorld(gridPosition+new Vector3Int(size.x,0,size.y));
+            var bounds=new Bounds((start+end)*.5f,new Vector3(Mathf.Max(.01f,Mathf.Abs(end.x-start.x)-.1f),1f,Mathf.Max(.01f,Mathf.Abs(end.z-start.z)-.1f)));
+            if(RoadBuilder.Instance.OverlapsRoad(bounds))return false;
+        }
       
 
         GridData selectedData = GetAllFloorIDs().Contains(database.objectsData[selectedObjectIndex].ID) ? floorData : furnitureData;

@@ -1,48 +1,36 @@
-using System.Collections;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.AI;
 
 public class RaidManager : MonoBehaviour
 {
+    public static RaidManager Instance { get; private set; }
     public GameObject PrefabEnemy;
+    [Tooltip("Устаревшие точки. Новые отряды создаёт только BanditCamp; список сохранён для совместимости сцены.")]
     public List<GameObject> points = new List<GameObject>();
 
     [Header("Рейд")]
-    public float raidIntervalMinutes = 2f;
+    public float raidIntervalMinutes = 4f;
+    [Min(0)] public float initialDelayMinutes = 10f;
+    [Min(0)] public float warningSeconds = 45f;
     public int minEnemies = 1;
     public int maxEnemies = 5;
 
-    private void Start()
+    public string LastWarning { get; private set; } = "";
+    public event Action<string> WarningRaised;
+    public float StartedAt { get; private set; }
+    private void Awake()
     {
-        StartCoroutine(RaidLoop());
+        if (Instance != null && Instance != this) { enabled = false; return; }
+        Instance = this; StartedAt = Time.time;
     }
-
-    private IEnumerator RaidLoop()
+    private void Update()
     {
-        while (true)
-        {
-            yield return new WaitForSeconds(raidIntervalMinutes * 60f);
-            SpawnWave();
-        }
+        if(SaveGameManager.IsLoading)return;
+        foreach (var camp in new List<BanditCamp>(BanditCamp.All))
+            if (camp != null && camp.isActiveAndEnabled) camp.Tick(this);
     }
-
-    private void SpawnWave()
-    {
-        if (!PrefabEnemy || points.Count == 0)
-            return;
-
-        for (int i = Random.Range(minEnemies, maxEnemies + 1); i > 0; i--)
-        {
-            Vector3 position = points[Random.Range(0, points.Count)].transform.position;
-
-            if (NavMesh.SamplePosition(position, out NavMeshHit hit, 5f, NavMesh.AllAreas))
-                position = hit.position;
-
-            GameObject enemy = Instantiate(PrefabEnemy, position, PrefabEnemy.transform.rotation);
-
-            if (enemy.TryGetComponent(out EnemyAi ai))
-                ai.Raid();
-        }
-    }
+    public void Warn(string message)
+    { LastWarning = message; Debug.Log(message, this); WarningRaised?.Invoke(message); }
+    private void OnDestroy() { if (Instance == this) Instance = null; }
 }

@@ -1,0 +1,5 @@
+# Повозка с едой
+
+Создано встроенным imagegen. Референс: Tavern-b128d3e4.png.
+
+Create a landscape concept art of a medieval food supply wagon for Lords of the Valley, matching the attached tavern reference's warm detailed stylized low-poly 3D miniature art. Show a large clear three-quarter isometric view of a compact wooden wagon with four spoked wooden wheels and iron rims, beige canvas canopy over the back half, blue-and-gold bread-and-bowl emblem, baskets of bread, apples, cheese, closed clay stew pots and small barrels. A fold-down wooden serving shelf along the side displays bowls and bread; leave clear space beside it for soldiers to collect food. Practical believable wagon, open sides, visible tow pole, no animal required. Bottom corner small scene showing same wagon beside three medieval soldiers, one receiving a bowl. Dark charcoal background, fine gold border, Russian title 'Повозка с едой'. Coherent building-family style from reference, but unmistakably a mobile wagon, not a house. No engines, modern tires, magic or giant chimneys. Rich warm oak and muted linen colors, crisp readable game asset silhouette.

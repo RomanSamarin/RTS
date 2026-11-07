@@ -11,7 +11,11 @@ public class ResourcesMove : MonoBehaviour
     // Builder добавлен в конец, чтобы не сдвинуть значения ролей,
     // уже сохранённые в префабах сцены.
     // Villager — безработный житель: ничего не добывает и может быть нанят в здание.
-    public enum UnitRole { Lumberjack, Carrier, Fisher, StoneMason, Builder, Villager }
+    public enum UnitRole { Lumberjack, Carrier, Fisher, StoneMason, Builder, Villager, Miner, Farmer, Miller, Baker, Hunter, BerryGatherer, Blacksmith, Craftsman, Soldier, Transport, Horse, Smoker }
+    public bool IsTrainingRecruit => GetComponent<TrainingRecruit>() != null && GetComponent<TrainingRecruit>().IsReserved;
+    public bool IsFoodGatherer => role == UnitRole.Hunter || role == UnitRole.BerryGatherer;
+    public bool IsProductionWorker => role == UnitRole.Miller || role == UnitRole.Baker
+        || role == UnitRole.Blacksmith || role == UnitRole.Craftsman || role == UnitRole.Smoker;
 
     [Header("Настройки роли юнита")]
     [Tooltip("Профессия рабочего. Builder — строитель: сам находит стройплощадку, " +
@@ -36,6 +40,10 @@ public class ResourcesMove : MonoBehaviour
     // Здание, в которое нанят рабочий. Если задано — рабочий несёт
     // добытые ресурсы именно сюда, а не в ближайшее здание того же типа.
     [SerializeField] private GameObject assignedWorkplace;
+    private bool returningToWorkplace;
+    public bool IsReturningToWorkplace => returningToWorkplace;
+    public void CompleteWorkplaceReturn() { returningToWorkplace = false; }
+    public bool IsDeliveringResources => hasResourcesInPocket;
 
     [SerializeField] private bool hasResourcesInPocket = false;
 
@@ -45,7 +53,16 @@ public class ResourcesMove : MonoBehaviour
     public UnitRole Role => role;
 
     /// <summary>Безработный житель — его можно нанять.</summary>
-    public bool IsUnemployed => role == UnitRole.Villager;
+    public bool IsUnemployed => role == UnitRole.Villager && !IsTrainingRecruit;
+
+    public bool CanChangeRole
+    {
+        get
+        {
+            GettingResources cargo = GetComponent<GettingResources>();
+            return !IsTrainingRecruit && (cargo == null || !cargo.HasCargo);
+        }
+    }
 
     /// <summary>Здание, в которое нанят рабочий (может быть null).</summary>
     public GameObject AssignedWorkplace => assignedWorkplace;
@@ -56,6 +73,11 @@ public class ResourcesMove : MonoBehaviour
     /// </summary>
     public void SetRole(UnitRole newRole, GameObject workplace = null)
     {
+        if (role != newRole && !CanChangeRole)
+        {
+            Debug.LogWarning("Сначала разгрузите рабочего, затем смените профессию.", this);
+            return;
+        }
         UnitRole previousRole = role;
 
         // Недонесённый груз сбрасываем: иначе рабочий новой профессии
@@ -70,7 +92,21 @@ public class ResourcesMove : MonoBehaviour
             RemoveBuilder();
 
         role = newRole;
+        if(newRole==UnitRole.Soldier)HospitalPatient.Ensure(gameObject);
         assignedWorkplace = workplace;
+        if (newRole == UnitRole.Miner && workplace != null && workplace.GetComponent<MiningHouse>() == null)
+            workplace.AddComponent<MiningHouse>();
+        if (newRole == UnitRole.Farmer && workplace != null && workplace.GetComponent<FarmHouse>() == null)
+            workplace.AddComponent<FarmHouse>();
+        if (newRole == UnitRole.Hunter && workplace != null && workplace.GetComponent<HunterHouse>() == null)
+            workplace.AddComponent<HunterHouse>();
+        if (newRole == UnitRole.BerryGatherer && workplace != null && workplace.GetComponent<BerryGathererHouse>() == null)
+            workplace.AddComponent<BerryGathererHouse>();
+        if (newRole == UnitRole.Blacksmith && workplace != null && workplace.GetComponent<Blacksmith>() == null)
+            workplace.AddComponent<Blacksmith>();
+        if (newRole == UnitRole.Craftsman && workplace != null && workplace.GetComponent<Workshop>() == null)
+            workplace.AddComponent<Workshop>();
+        returningToWorkplace = newRole != UnitRole.Villager && workplace != null;
 
         // Старые цели (дерево, склад, стройка) больше не актуальны.
         if (attackController != null)
@@ -92,13 +128,16 @@ public class ResourcesMove : MonoBehaviour
     /// <summary>Привязывает рабочего к зданию (куда он будет сдавать ресурсы).</summary>
     public void AssignWorkplace(GameObject workplace)
     {
+        if(workplace!=null&&!FactionMember.CanUse(gameObject,workplace))return;
         assignedWorkplace = workplace;
+        returningToWorkplace = role != UnitRole.Villager && workplace != null;
     }
 
     /// <summary>Снимает привязку к зданию.</summary>
     public void ClearWorkplace()
     {
         assignedWorkplace = null;
+        returningToWorkplace = false;
     }
  
 
@@ -120,6 +159,29 @@ public class ResourcesMove : MonoBehaviour
 
     void Update()
     {
+        if(SaveGameManager.IsLoading)return;
+        if (UnitEat.ControlsMovement(this)) return;
+        if (BuildingRoadAccess.PauseWorker(this)) return;
+        if (IsTrainingRecruit || role == UnitRole.Soldier || role == UnitRole.Transport || role == UnitRole.Horse) return;
+        if (role == UnitRole.Carrier && GetComponent<CarrierTask>() == null)
+            gameObject.AddComponent<CarrierTask>();
+        if (role == UnitRole.Farmer && GetComponent<Farmer>() == null)
+            gameObject.AddComponent<Farmer>();
+        if (role == UnitRole.Farmer && assignedWorkplace != null && assignedWorkplace.GetComponent<FarmHouse>() == null)
+            assignedWorkplace.AddComponent<FarmHouse>();
+        if (role == UnitRole.Miner && GetComponent<Miner>() == null)
+            gameObject.AddComponent<Miner>();
+        if (IsProductionWorker && GetComponent<ProductionWorker>() == null)
+            gameObject.AddComponent<ProductionWorker>();
+        if (IsFoodGatherer && GetComponent<FoodGatheringWorker>() == null)
+            gameObject.AddComponent<FoodGatheringWorker>();
+        if (_goScript != null && _goScript.isCommandToMove) return;
+        // Сборщик ведёт подход к дому сам: использует доступную точку NavMesh.
+        if (IsFoodGatherer || IsProductionWorker) return;
+        if (TryReturnToWorkplace()) return;
+        if (role == UnitRole.Carrier) return;
+        if (role == UnitRole.Miner || role == UnitRole.Farmer || IsProductionWorker || IsFoodGatherer) return;
+
         // Строитель не занимается добычей: его поведение полностью
         // ведёт компонент Builder (поиск стройки, подход, прогресс).
         // EnsureBuilder нужен и здесь: роль могли переключить на Builder
@@ -130,18 +192,29 @@ public class ResourcesMove : MonoBehaviour
             return;
         }
 
-        if (_goScript != null && _goScript.isCommandToMove) return; 
 
         // Безработный житель не ищет работу: он просто стоит и ждёт, пока его
         // наймут в здание. Приказы игрока (движение, атака) обрабатывают
         // GOScript/ManagerGO независимо от этого скрипта.
-        if (role == UnitRole.Villager) return;
+        if (role == UnitRole.Villager||GetComponent<Catapult>()!=null) return;
 
         // СДАЧА/ЗАБОР РЕСУРСОВ: если юнит уже у нужного склада — ОСТАНАВЛИВАЕМСЯ у стены
         // и проводим транзакцию прямо здесь (не через большой отслеживающий триггер).
         if (TryStopAndProcessNearbyBuilding()) return;
 
-        if (hasResourcesInPocket) return; 
+        if (role == UnitRole.Carrier && _gettingResources != null && _gettingResources.HasCargo)
+            hasResourcesInPocket = true;
+        if (hasResourcesInPocket)
+        {
+            if (attackController != null && attackController.targetToAttack == null)
+            {
+                if (role == UnitRole.Carrier) GoToMainWarehouse();
+                if (role == UnitRole.Lumberjack) GoToSawmill();
+                if (role == UnitRole.Fisher) GoToFishHouse();
+                if (role == UnitRole.StoneMason) GoToStoneHouse();
+            }
+            return;
+        }
 
         if (_gettingResources != null)
         {
@@ -234,7 +307,7 @@ public class ResourcesMove : MonoBehaviour
         if (assignedWorkplace == null)
             return null;
 
-        if (!assignedWorkplace.activeInHierarchy)
+        if (!assignedWorkplace.activeInHierarchy||!FactionMember.CanUse(gameObject,assignedWorkplace))
             return null;
 
         if (!string.IsNullOrEmpty(requiredTag) && !assignedWorkplace.CompareTag(requiredTag))
@@ -252,6 +325,11 @@ public class ResourcesMove : MonoBehaviour
     {
         if (target == null)
             return transform.position;
+
+        OreDeposit deposit = target.GetComponent<OreDeposit>();
+        if (deposit != null) return deposit.WorkPosition;
+        FarmField field = target.GetComponent<FarmField>();
+        if (field != null) return field.WorkPosition;
 
         if (BuildingEntrance.TryGetWorldPoint(target.gameObject, out Vector3 doorPoint))
             return doorPoint;
@@ -273,40 +351,96 @@ public class ResourcesMove : MonoBehaviour
 
     private void GoToSawmill()
     {
-        GameObject sawmill = GetAssignedWorkplace("Sawmill");
-        if (sawmill == null)
-            sawmill = FindClosestWithTag("Sawmill");
-
-        SetTarget(sawmill != null ? sawmill.transform : null);
+        GoToWorkplaceOrClosest("Sawmill");
     }
 
     private void GoToFishHouse()
     {
-        GameObject fishHouse = GetAssignedWorkplace("FishHouse");
-        if (fishHouse == null)
-            fishHouse = FindClosestWithTag("FishHouse");
-
-        SetTarget(fishHouse != null ? fishHouse.transform : null);
+        GoToWorkplaceOrClosest("FishHouse");
     }
 
     private void GoToStoneHouse()
     {
         // Каменщик несёт добытый камень на ВРЕМЕННЫЙ склад камня (StoneHouse):
         // подходит, останавливается у стены склада и сдаёт камень (не заходя в центр).
-        GameObject stoneHouse = GetAssignedWorkplace("StoneHouse");
-        if (stoneHouse == null)
-            stoneHouse = FindClosestWithTag("StoneHouse");
+        GoToWorkplaceOrClosest("StoneHouse");
+    }
 
-        SetTarget(stoneHouse != null ? stoneHouse.transform : null);
+    private void GoToWorkplaceOrClosest(string requiredTag)
+    {
+        GameObject destination = assignedWorkplace != null
+            ? GetAssignedWorkplace(requiredTag)
+            : FindClosestWithTag(requiredTag);
+        if (destination != null) SetTarget(destination.transform);
+        else StopFollowingTarget();
+    }
+
+    private void StopFollowingTarget()
+    {
+        if (attackController != null) attackController.targetToAttack = null;
+        if (_agent != null && _agent.isOnNavMesh) _agent.ResetPath();
+        if (_animator != null) _animator.SetBool("IsFollowing", false);
+    }
+
+    /// <summary>Возвращает свободного рабочего к зданию, где его наняли.</summary>
+    public void ReturnToWorkplace()
+    {
+        if (assignedWorkplace != null && !IsAtDeliveryPoint(assignedWorkplace, stopNearBuildingDistance))
+            returningToWorkplace = true;
+    }
+
+    private bool TryReturnToWorkplace()
+    {
+        if (!returningToWorkplace) return false;
+        if (assignedWorkplace == null || role == UnitRole.Villager)
+        {
+            returningToWorkplace = false;
+            return false;
+        }
+        if (!assignedWorkplace.activeInHierarchy)
+        {
+            StopFollowingTarget();
+            return true;
+        }
+        if (IsAtDeliveryPoint(assignedWorkplace, stopNearBuildingDistance))
+        {
+            StopFollowingTarget();
+            returningToWorkplace = false;
+            return true;
+        }
+        SetTarget(assignedWorkplace.transform);
+        return true;
     }
 
     private void GoToMainWarehouse()
     {
-        GameObject warehouse = GetAssignedWorkplace("Warehouse");
-        if (warehouse == null)
-            warehouse = FindClosestWithTag("Warehouse");
-
-        SetTarget(warehouse != null ? warehouse.transform : null);
+        GameObject assigned = assignedWorkplace;
+        if (assigned != null)
+        {
+            if (!assigned.activeInHierarchy || !assigned.CompareTag("Warehouse")||!FactionMember.CanUse(gameObject,assigned))
+            {
+                StopFollowingTarget();
+                return;
+            }
+            var assignedStorage = assigned.GetComponent<WarehouseStorage>();
+            if (assignedStorage == null) assignedStorage = assigned.AddComponent<WarehouseStorage>();
+            // Return to the hiring warehouse even when it is full; keep the cargo and wait.
+            SetTarget(assigned.transform);
+            return;
+        }
+        GameObject closest = null;
+        float distance = float.PositiveInfinity;
+        foreach (GameObject candidate in GameObject.FindGameObjectsWithTag("Warehouse"))
+        {
+            if(!FactionMember.CanUse(gameObject,candidate))continue;
+            var storage = candidate.GetComponent<WarehouseStorage>();
+            if (storage == null) storage = candidate.AddComponent<WarehouseStorage>();
+            float candidateDistance = (candidate.transform.position - transform.position).sqrMagnitude;
+            if (storage.FreeCapacity <= 0 || candidateDistance >= distance) continue;
+            closest = candidate;
+            distance = candidateDistance;
+        }
+        SetTarget(closest != null ? closest.transform : null);
     }
 
     private void FindAndGoToClosestTree()
@@ -334,6 +468,7 @@ public class ResourcesMove : MonoBehaviour
             attackController.targetToAttack = closestTree.transform;
             if (_animator != null) _animator.SetBool("IsFollowing", true);
         }
+        else ReturnToWorkplace();
     }
 
     private void FindAndGoToClosestStoneQuarry()
@@ -361,6 +496,7 @@ public class ResourcesMove : MonoBehaviour
             attackController.targetToAttack = closestQuarry.transform;
             if (_animator != null) _animator.SetBool("IsFollowing", true);
         }
+        else ReturnToWorkplace();
     }
 
     private void FindAndGoToClosestFishingSpot()
@@ -388,12 +524,33 @@ public class ResourcesMove : MonoBehaviour
             attackController.targetToAttack = closestSpot.transform;
             if (_animator != null) _animator.SetBool("IsFollowing", true);
         }
+        else ReturnToWorkplace();
     }
 
     private void FindAndGoToActiveResourceBuilding()
     {
         GameObject targetBuilding = null;
         float closestDistance = Mathf.Infinity;
+
+        foreach (FarmHouse house in FarmHouse.All)
+        {
+            if (house == null || house.StoredWheat <= 0) continue;
+            float distance = Vector3.Distance(transform.position, house.transform.position);
+            if (distance >= closestDistance) continue;
+            closestDistance = distance;
+            targetBuilding = house.gameObject;
+        }
+
+        foreach (MiningHouse deposit in MiningHouse.All)
+        {
+            if (deposit == null || !deposit.HasOre) continue;
+            float distance = Vector3.Distance(transform.position, deposit.transform.position);
+            if (distance < closestDistance)
+            {
+                closestDistance = distance;
+                targetBuilding = deposit.gameObject;
+            }
+        }
 
         // 1. Проверяем лесопилки
         GameObject[] sawmills = GameObject.FindGameObjectsWithTag("Sawmill");
@@ -448,6 +605,7 @@ public class ResourcesMove : MonoBehaviour
             attackController.targetToAttack = targetBuilding.transform;
             if (_animator != null) _animator.SetBool("IsFollowing", true);
         }
+        else ReturnToWorkplace();
     }
 
     private GameObject FindClosestWithTag(string tag)
@@ -457,7 +615,9 @@ public class ResourcesMove : MonoBehaviour
         float closestDistance = Mathf.Infinity;
 
         foreach (GameObject obj in objects)
-        {    float distance = Vector3.Distance(transform.position, obj.transform.position);
+        {
+            if(!FactionMember.CanUse(gameObject,obj))continue;
+            float distance = Vector3.Distance(transform.position, obj.transform.position);
             if (distance < closestDistance)
             {
                 closestDistance = distance;
@@ -484,10 +644,19 @@ public class ResourcesMove : MonoBehaviour
     /// задана, иначе — у стены здания. <paramref name="wallDistance"/> —
     /// допуск для зданий без двери.
     /// </summary>
+    public bool IsAtMiningHome(GameObject building)
+    {
+        return IsAtDeliveryPoint(building, stopNearBuildingDistance);
+    }
+
     private bool IsAtDeliveryPoint(GameObject building, float wallDistance)
     {
         if (building == null)
             return false;
+
+        OreDeposit deposit = building.GetComponent<OreDeposit>();
+        if (deposit != null)
+            return Vector3.Distance(transform.position, deposit.WorkPosition) <= Mathf.Max(wallDistance, 1.5f);
 
         if (BuildingEntrance.TryGetWorldPoint(building, out Vector3 doorPoint))
         {
@@ -507,7 +676,7 @@ public class ResourcesMove : MonoBehaviour
     {
         Collider targetCollider = building.GetComponent<Collider>();
         if (targetCollider == null)
-            return true;
+            return Vector3.Distance(transform.position, building.transform.position) <= wallDistance;
 
         float bodyDistance = Vector3.Distance(transform.position, targetCollider.ClosestPoint(transform.position));
         return bodyDistance <= wallDistance;
@@ -528,7 +697,33 @@ public class ResourcesMove : MonoBehaviour
     // Все транзакции со складами (сдача/забор ресурсов). Возвращает true, если транзакция прошла.
     private bool ProcessBuilding(GameObject building)
     {
+        if(building==null||!FactionMember.CanUse(gameObject,building))return false;
+        // Все сделки носильщика выполняет CarrierTask с резервами.
+        if (role == UnitRole.Carrier) return false;
+        if (building == null || returningToWorkplace) return false;
+        // All professions deliver only to their employer. Empty carriers may collect elsewhere.
+        if (hasResourcesInPocket && assignedWorkplace != null && building != assignedWorkplace)
+            return false;
         bool processed = false;
+
+        FarmHouse farm = building.GetComponent<FarmHouse>();
+        if (role == UnitRole.Carrier && !hasResourcesInPocket && farm != null && _gettingResources != null)
+        {
+            if (farm.Collect(_gettingResources, MaxUnitResources) <= 0) return false;
+            hasResourcesInPocket = true;
+            GoToMainWarehouse();
+            return true;
+        }
+
+        MiningHouse ore = building.GetComponent<MiningHouse>();
+        if (role == UnitRole.Carrier && !hasResourcesInPocket && ore != null && _gettingResources != null)
+        {
+            int amount = ore.Collect(_gettingResources, MaxUnitResources);
+            if (amount <= 0) return false;
+            hasResourcesInPocket = true;
+            GoToMainWarehouse();
+            return true;
+        }
 
         // 1. ЛЕСОРУБ пришел на ЛЕСОПИЛКУ
         if (role == UnitRole.Lumberjack && hasResourcesInPocket && building.CompareTag("Sawmill"))
@@ -588,10 +783,17 @@ public class ResourcesMove : MonoBehaviour
         // 4. НОСИЛЬЩИК пришел на ГЛАВНЫЙ СКЛАД (Сдает любые ресурсы)
         if (role == UnitRole.Carrier && hasResourcesInPocket && building.CompareTag("Warehouse"))
         {
-            if (ResourcesManager.Instance != null && _gettingResources != null)
+            if (_gettingResources != null)
             {
-                ResourcesManager.Instance.TakeResource(_gettingResources);
-                ClearPocket();
+                var storage = building.GetComponent<WarehouseStorage>();
+                if (storage == null) storage = building.AddComponent<WarehouseStorage>();
+                storage.Deposit(_gettingResources);
+                if (!_gettingResources.HasCargo) ClearPocket();
+                else
+                {
+                    hasResourcesInPocket = true;
+                    GoToMainWarehouse();
+                }
                 processed = true;
             }
         }
@@ -639,6 +841,8 @@ public class ResourcesMove : MonoBehaviour
 
         // Подходящее ли это здание для текущего состояния юнита?
         bool isDeliveryTarget =
+            (role == UnitRole.Carrier && !hasResourcesInPocket && targetGO.GetComponent<FarmHouse>() != null) ||
+            (role == UnitRole.Carrier && !hasResourcesInPocket && targetGO.GetComponent<MiningHouse>() != null) ||
             (role == UnitRole.Lumberjack && hasResourcesInPocket && targetTag == "Sawmill") ||
             (role == UnitRole.Fisher && hasResourcesInPocket && targetTag == "FishHouse") ||
             (role == UnitRole.StoneMason && hasResourcesInPocket && targetTag == "StoneHouse") ||
@@ -672,10 +876,7 @@ public class ResourcesMove : MonoBehaviour
     {
         if (_gettingResources != null)
         {
-            _gettingResources.Wood = 0;
-            _gettingResources.Stone = 0;
-            _gettingResources.Wheat = 0;
-            _gettingResources.Fish = 0;
+            _gettingResources.Clear();
         }
         hasResourcesInPocket = false;
         if (attackController != null) attackController.targetToAttack = null;

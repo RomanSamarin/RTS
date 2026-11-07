@@ -42,6 +42,16 @@ public class CursorManager : MonoBehaviour
 
     void Update()
     {
+        if (RoadBuilder.BlocksWorldInput)
+        { markerInstance?.SetActive(false); Cursor.visible=true; return; }
+        // Во время выбора сборного пункта сам флажок заменяет курсор.
+        // Не даём обычному менеджеру снова показать указатель или второй маркер.
+        if (Barracks.IsChoosingRallyPoint)
+        {
+            markerInstance?.SetActive(false);
+            Cursor.visible = false;
+            return;
+        }
         // Check if the marker should be active
         if (isMarkerActive)
         {

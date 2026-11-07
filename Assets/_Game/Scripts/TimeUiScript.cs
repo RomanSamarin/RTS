@@ -15,6 +15,7 @@ public class TimeUiScript : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+        if(SaveGameManager.IsLoading)return;
         
     }
     public void OnButtonTime2x()
