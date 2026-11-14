@@ -11,7 +11,7 @@ public static class TrainingLoadout
         {
             case TroopType.Cavalry: return new Dictionary<ResourceType, int> { [ResourceType.Sword] = 1 };
             case TroopType.Swordsman: return new Dictionary<ResourceType, int> { [ResourceType.Sword] = 1, [ResourceType.Shield] = 1 };
-            case TroopType.Spearman: return new Dictionary<ResourceType, int> { [ResourceType.Spear] = 1 };
+            case TroopType.Spearman: return new Dictionary<ResourceType, int> { [ResourceType.Spear] = 1, [ResourceType.Shield] = 1 };
             case TroopType.Archer: return new Dictionary<ResourceType, int> { [ResourceType.Bow] = 1 };
             default: throw new System.ArgumentException("Resolve Auto before requesting a loadout.");
         }

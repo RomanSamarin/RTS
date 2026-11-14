@@ -11,8 +11,9 @@ public class CartHorse : MonoBehaviour
     public static IReadOnlyList<CartHorse> All => horses;
     [Min(0.5f)] public float hitchDistance = 3f;
     public FoodCart Cart { get; private set; }
+    public SiegeLadderCart SiegeCart { get; private set; }
     public Barracks TrainingOwner { get; set; }
-    public bool IsHitched => Cart != null;
+    public bool IsHitched => Cart != null || SiegeCart != null;
     public bool IsAlive => isActiveAndEnabled && (unit == null || unit.unitHealth > 0);
     private NavMeshAgent agent;
     private Unit unit;
@@ -36,7 +37,7 @@ public class CartHorse : MonoBehaviour
     {
         Cache();
         if (target != null && Cart == target && target.AttachedHorse == this && IsAlive) return true;
-        if (!IsAlive || TrainingOwner != null || target == null || !target.isActiveAndEnabled || target.AttachedHorse != null || Cart != null) return false;
+        if (!IsAlive || TrainingOwner != null || target == null || !target.isActiveAndEnabled || target.AttachedHorse != null || IsHitched) return false;
         if(!FactionMember.AreAllies(gameObject,target.gameObject))return false;
         if (Vector3.Distance(transform.position, target.transform.position) > hitchDistance) return false;
         GetComponent<GOScript>()?.StopMoving();
@@ -45,10 +46,25 @@ public class CartHorse : MonoBehaviour
         { if (agent.enabled && agent.isOnNavMesh) agent.ResetPath(); agent.enabled = false; }
         Cart = target; target.SetHorse(this); return true;
     }
+    public bool TryHitch(SiegeLadderCart target)
+    {
+        Cache();
+        if (target != null && SiegeCart == target && target.AttachedHorse == this && IsAlive) return true;
+        if (!IsAlive || TrainingOwner != null || target == null || !target.isActiveAndEnabled || target.AttachedHorse != null || IsHitched) return false;
+        if (!FactionMember.AreAllies(gameObject, target.gameObject)) return false;
+        if (Vector3.Distance(transform.position, target.transform.position) > hitchDistance) return false;
+        GetComponent<GOScript>()?.StopMoving();
+        wasAgentEnabled = agent != null && agent.enabled;
+        if (agent != null)
+        { if (agent.enabled && agent.isOnNavMesh) agent.ResetPath(); agent.enabled = false; }
+        SiegeCart = target; target.SetHorse(this); return true;
+    }
     public void Unhitch()
     {
         var previous = Cart; Cart = null;
+        var previousSiege = SiegeCart; SiegeCart = null;
         if (previous != null) previous.ClearHorse(this);
+        if (previousSiege != null) previousSiege.ClearHorse(this);
         Cache();
         if (wasAgentEnabled && (unit == null || unit.unitHealth > 0)) RestoreAgent();
         SetMoving(false);
@@ -66,6 +82,12 @@ public class CartHorse : MonoBehaviour
     private void LateUpdate()
     {
         if(SaveGameManager.IsLoading)return;
+        if (SiegeCart != null)
+        {
+            if (!IsAlive || !SiegeCart.isActiveAndEnabled || !FactionMember.AreAllies(gameObject, SiegeCart.gameObject)) { Unhitch(); return; }
+            transform.SetPositionAndRotation(SiegeCart.HorsePosition, SiegeCart.transform.rotation);
+            SetMoving(SiegeCart.IsMoving); return;
+        }
         if (Cart == null) return;
         if (!IsAlive || !Cart.isActiveAndEnabled) { Unhitch(); return; }
         transform.SetPositionAndRotation(Cart.HorsePosition, Cart.transform.rotation);

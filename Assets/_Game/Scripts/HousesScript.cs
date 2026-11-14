@@ -204,7 +204,7 @@ public class HousesScript : MonoBehaviour
     {
         if (unit == null)
             return false;
-        if (unit.GetComponent<FoodCart>() != null || unit.GetComponent<CartHorse>() != null) return false;
+        if (unit.GetComponent<FoodCart>() != null || unit.GetComponent<SiegeLadderCart>() != null || unit.GetComponent<CartHorse>() != null) return false;
 
         return FactionMember.IsPlayer(unit);
     }
@@ -221,7 +221,7 @@ public class HousesScript : MonoBehaviour
         if (unit == null)
             return false;
         if(!FactionMember.AreAllies(unit,gameObject))return false;
-        if (unit.GetComponent<FoodCart>() != null || unit.GetComponent<CartHorse>() != null) return false;
+        if (unit.GetComponent<FoodCart>() != null || unit.GetComponent<SiegeLadderCart>() != null || unit.GetComponent<CartHorse>() != null) return false;
 
         RemoveMissingResidents();
 

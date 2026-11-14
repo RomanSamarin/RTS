@@ -68,6 +68,16 @@ public class UiSelectBuilding : MonoBehaviour, ISelectable
             var barracksUI = panel.GetComponentInChildren<_Game.Scripts.UI.BarracksActionsPanel>(true);
             var stableUI = panel.GetComponentInChildren<_Game.Scripts.UI.StablePanel>(true);
             var hospitalUI=panel.GetComponentInChildren<_Game.Scripts.UI.HospitalPanel>(true);
+            var watchtowerUI=panel.GetComponentInChildren<WatchtowerPanel>(true);
+            if(watchtowerUI!=null)watchtowerUI.Bind(GetComponent<Watchtower>());
+            var shipSuppliesUI=panel.GetComponentInChildren<ShipSuppliesPanel>(true);
+            var shipRepairUI=panel.GetComponentInChildren<ShipRepairPanel>(true);
+            if(shipRepairUI!=null)shipRepairUI.Bind(GetComponent<Port>());
+            if(shipSuppliesUI!=null)shipSuppliesUI.Bind(GetComponent<ShipSupplyDock>());
+            var portUI=panel.GetComponentInChildren<PortPanel>(true);
+            if(portUI!=null)portUI.Bind(GetComponent<Port>());
+            var tradeYardUI = panel.GetComponentInChildren<TradeYardPanel>(true);
+            if (tradeYardUI != null) tradeYardUI.Bind(GetComponent<TradeYard>());
             if(hospitalUI!=null)hospitalUI.Bind(GetComponentInParent<Hospital>()??GetComponentInChildren<Hospital>());
             if (stableUI != null)
             {
@@ -95,7 +105,7 @@ public class UiSelectBuilding : MonoBehaviour, ISelectable
             }
             panel.SetActive(true);
         }
-        else
+        else if (GetComponent<TownHall>() == null)
             Debug.LogWarning($"[UiSelectBuilding] У \"{name}\" не назначена панель меню " +
                              $"(UIPanel пустая, Panel Name = \"{panelName}\").", this);
 

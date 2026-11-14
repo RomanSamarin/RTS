@@ -16,7 +16,7 @@ public class FishingSpot : MonoBehaviour
         // Общее "здоровье" водоема — это общее время в секундах, нужное на вылов всей рыбы
         fishHealth = totalFishCount * timeToCatchOneFish;
     }
-    // Метод вызывается при каждом замахе удочки из UnitAttackState
+    // Совместимое имя API: ResourceWorker передаёт рабочий тик, Animator урон не наносит.
     public void TakeDamage(int damageToInflict, GameObject attacker)
     {
         // Юнит наносит "урон", который равен секундам, проведенным за ловлей

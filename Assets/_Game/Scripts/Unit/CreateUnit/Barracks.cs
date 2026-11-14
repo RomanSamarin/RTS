@@ -154,7 +154,7 @@ public class Barracks : MonoBehaviour
             if (horse == null) return Fail("Приведите свободную лошадь к казарме.");
         }
         var kit = TrainingLoadout.Get(kind);
-        if (!equipment.TryReserveKit(kit)) return Fail("Нет доступного снаряжения: мечнику нужны меч и щит, копейщику — копьё, лучнику — лук.");
+        if (!equipment.TryReserveKit(kit)) return Fail("Нет доступного снаряжения: мечнику нужны меч и щит, копейщику — копьё и щит, лучнику — лук, кавалеристу — меч.");
         var recruit = citizen.GetComponent<TrainingRecruit>();
         if (recruit == null) recruit = citizen.gameObject.AddComponent<TrainingRecruit>();
         if (!recruit.Reserve(this)) { equipment.ReleaseKit(kit); return Fail("Житель уже занят другим заказом."); }

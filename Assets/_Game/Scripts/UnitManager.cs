@@ -29,7 +29,7 @@ public class UnitManager : MonoBehaviour
 
     public void RegisterUnit(UnitAdd unit)
     {
-        if(unit==null||!FactionMember.IsPlayer(unit.gameObject)||unit.GetComponent<CartHorse>()!=null||unit.GetComponent<FoodCart>()!=null||unit.GetComponent<Catapult>()!=null)return;
+        if(unit==null||!FactionMember.IsPlayer(unit.gameObject)||unit.GetComponent<CartHorse>()!=null||unit.GetComponent<FoodCart>()!=null||unit.GetComponent<SiegeLadderCart>()!=null||unit.GetComponent<Catapult>()!=null||unit.GetComponent<BatteringRam>()!=null)return;
         if (!allUnits.Contains(unit))
         {
             allUnits.Add(unit);

@@ -110,7 +110,11 @@ public class Stable : RecipeBuilding
         }
         return taken;
     }
-    public override int Collect(GettingResources cargo, int capacity)
+    public override int CollectableOutput(WarehouseStorage destination)
+        => destination != null && !destination.Accepts(ResourceType.Gold)
+            ? Mathf.Max(0, StoredFood - Needed(ResourceType.Food)) : StoredOutput;
+
+    public override int Collect(GettingResources cargo, int capacity, WarehouseStorage destination = null)
     {
         if (cargo == null) return 0;
         int foodExcess = Mathf.Max(0, StoredFood - Needed(ResourceType.Food));
@@ -120,7 +124,8 @@ public class Stable : RecipeBuilding
             int count = Mathf.Min(Amount(type), Mathf.Min(foodExcess, Mathf.Max(0, capacity - taken)));
             Add(type, -count); cargo.AddStoredAmount(type, count); taken += count; foodExcess -= count;
         }
-        int gold = Mathf.Min(Mathf.Max(0, StoredGold - Needed(ResourceType.Gold)), Mathf.Max(0, capacity - taken));
+        int gold = destination != null && !destination.Accepts(ResourceType.Gold) ? 0
+            : Mathf.Min(Mathf.Max(0, StoredGold - Needed(ResourceType.Gold)), Mathf.Max(0, capacity - taken));
         Add(ResourceType.Gold, -gold); cargo.AddStoredAmount(ResourceType.Gold, gold);
         return taken + gold;
     }

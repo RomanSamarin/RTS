@@ -85,9 +85,13 @@ public class UnitEat : MonoBehaviour
     {
         if(SaveGameManager.IsLoading)return;
         // Животные и повозки не получают человеческие команды питания.
-        if (GetComponent<FoodCart>() != null || GetComponent<CartHorse>() != null||GetComponent<Catapult>()!=null)
+        if (GetComponent<FoodCart>() != null || GetComponent<CartHorse>() != null||GetComponent<Catapult>()!=null||GetComponent<BatteringRam>()!=null)
         { if (IsBusy) CancelForCommand(false); return; }
         if (unit == null || !unit.enabled || unit.unitHealth <= 0f) return;
+        var sailor=GetComponent<ShipCrewMember>();
+        if(sailor!=null&&sailor.IsAboard) { UpdateOnShip(sailor.Crew!=null?sailor.Crew.GetComponent<ShipProvisions>():null); return; }
+        var passenger=GetComponent<ShipPassenger>();
+        if(passenger!=null&&passenger.IsAboard){UpdateOnShip(passenger.Ship!=null?passenger.Ship.GetComponent<ShipProvisions>():null);return;}
         RefreshFeedingMode();
         if (IsBusy && (command == null || !command.OwnsFoodOrder(movementToken))) CancelForCommand(false);
         // Проверяется и до начала похода, и во время движения/еды.
@@ -120,6 +124,15 @@ public class UnitEat : MonoBehaviour
             unit.TakeDamage(Mathf.Max(1, starvationDamage), null);
             if (unit.unitHealth <= 0f) CancelForCommand();
         }
+    }
+    private void UpdateOnShip(ShipProvisions stock)
+    {
+        if(IsBusy)CancelForCommand(false);
+        WantEat=ShipCrewNutrition.Tick(Time.time,WantEat,nextMeal,portionsPerMeal,starvationGrace,starvationInterval,
+            hunger, amount=>stock!=null&&stock.TryConsume(amount),out bool fed,out bool damage);
+        if(fed)nextMeal=Time.time+Mathf.Max(1,TimeToEat)*60f;
+        SupplyWarning=WantEat?"Голод на корабле: нет припасов":"";
+        if(damage)unit.TakeDamage(Mathf.Max(1,starvationDamage),null);
     }
     private void UpdateFoodTrip()
     {

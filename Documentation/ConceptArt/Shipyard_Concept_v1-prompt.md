@@ -1,0 +1,12 @@
+# Shipyard concept
+
+Generated with built-in imagegen. Style reference: Hunter_Hut_Concept_v1.png.
+
+Use case: stylized-concept.
+Asset: medieval shipbuilding yard concept sheet for the Unity RTS Lords of the Valley.
+Input image is a STYLE REFERENCE ONLY: preserve its warm hand-painted low-poly 3D miniature rendering, honey oak, creamy rough limestone, weathered blue-grey slate roof tiles, soft warm illumination, dark charcoal-green background and restrained antique-gold sheet borders. Design a NEW building silhouette, not a copy of the reference cottage.
+Main subject: a compact but practical medieval riverside SHIPYARD. A low elongated asymmetric timber-framed shipwright's workshop on a stone plinth, offset steep blue-grey slate gable, a small elevated loft above the landward end, a wide open carpentry working bay rather than a residential front facade. Immediately beside the workshop is ONE open sloping timber slipway pointing into clear blue-green river water. An unfinished medium medieval wooden merchant ship hull stands on realistic timber cradles with visible keel and curved ribs, partly planked sides. It is proportionately larger than the workshop door, not a toy rowboat. Clear unobstructed launch direction into the water.
+One plausible medieval wooden lifting gantry with rope block-and-tackle over the slipway, a small hand capstan, one neat stack of timber, one coil of rope and a shipwright workbench under a lean-to. Keep props restrained and forms easy to model and readable at RTS distance. Two shipwrights in simple medieval clothing for scale. Small blue and gold village pennant and warm lantern match established game universe. Cobblestone landward entry for physical resource delivery; rocks and a little grass along the bank. No forest of cranes or many vessels: this is a single production building.
+Composition: polished wide landscape concept art board. Large detailed three-quarter isometric hero view on left two thirds showing the entire building, unfinished hull, slipway and a slice of river. Upper-right panel shows the same shipyard from the reverse water-facing angle with coherent layout. Lower-right detail panel shows hull ribs, timber supports and the rope hoist.
+Russian main heading exactly "СУДОСТРОИТЕЛЬНАЯ ВЕРФЬ". No gameplay stats, prices, explanatory paragraphs or UI.
+Avoid: modern steel machinery, industrial metal cranes, cannons, ocean liner proportions, large fortress architecture, fishing-house copy, ornate impractical doors, excessive crates, clutter, photorealism.

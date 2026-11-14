@@ -20,6 +20,7 @@ public class InputManager : MonoBehaviour
     // кнопка и закрывающаяся панель не передавали то же нажатие в мир.
     private void LateUpdate()
     {
+        if (SettingsMenu.BlocksWorldInput) return;
         if (Input.GetMouseButtonDown(0) && suppressedClickFrame != Time.frameCount && !IsPointerOverUI())
              OnClicked?.Invoke();
         if (Input.GetKeyDown(KeyCode.Escape))

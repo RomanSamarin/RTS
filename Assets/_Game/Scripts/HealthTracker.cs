@@ -20,6 +20,7 @@ public class HealthTracker : MonoBehaviour
     // Call this method to update the health bar and color
     public void UpdateSliderValue(float currentHealth, float maxHealth)
     {
+        if (HealthBarSlider == null || !isActiveAndEnabled) return;
         // Calculate the health percentage
         float healthPercentage = Mathf.Clamp01(currentHealth / maxHealth);
 
@@ -67,6 +68,7 @@ public class HealthTracker : MonoBehaviour
     // Set the color based on the health percentage
     private void UpdateColor(float healthPercentage)
     {
+        if (sliderFill == null) return;
         if (healthPercentage >= 0.6f)
         {
             sliderFill.material = greenEmission;

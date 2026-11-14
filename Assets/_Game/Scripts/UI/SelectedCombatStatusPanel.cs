@@ -26,7 +26,12 @@ public class SelectedCombatStatusPanel : MonoBehaviour
         {
             string effects = $"Скорость: {battle.SpeedMultiplier:P0}\nУрон: {battle.DamageMultiplier:P0}\nТемп атак: {battle.AttackRateMultiplier:P0}";
             if (battle.Cohesive && battle.Kind == TroopType.Swordsman) effects += "\nСпереди: −20% урона в ближнем бою, −35% урона стрел";
-            if (battle.Holding && battle.Kind == TroopType.Spearman) effects += "\nВыставленные копья против фронтального натиска";
+            if (battle.Holding && battle.Kind == TroopType.Spearman)
+            {
+                effects += "\nВыставленные копья против фронтального натиска";
+                if (TroopCombat.HasShield(battle.gameObject))
+                    effects += battle.Cohesive ? "\nЩит спереди: −25% урона от стрел" : "\nЩит спереди: −10% урона от стрел";
+            }
             if (battle.IsDisordered) effects += "\nПолучаемый урон: +25%";
             modifiersText.text = effects;
         }

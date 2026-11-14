@@ -48,22 +48,9 @@ public class Builder : MonoBehaviour
     public float repairSpeed = 10f;
 
     [Header("Анимация")]
-    [Tooltip("Bool-параметр Animator, который включается во время работы. " +
-             "По умолчанию isAttacking — он запускает клип удара/рубки")]
-    public string workParameter = "isAttacking";
-
-    [Tooltip("Состояния анимации работы (пробуются по порядку). " +
-             "В контроллере это клип удара: Attack State / Attack")]
-    public string[] workStates = { "Attack State", "Attack" };
-
-    [Tooltip("Состояние покоя, в которое строитель возвращается после работы")]
-    public string[] idleStates = { "idle State", "Idle" };
-
-    [Tooltip("Слой Animator для анимации, если видимых слоёв не нашлось")]
-    public int animationLayer = 0;
-
-    [Tooltip("Длительность перехода в анимацию работы и обратно, сек")]
-    public float workAnimationFade = 0.15f;
+    [Tooltip("Работа использует Bool isWorking, боевой isAttacking не включается.")]
+    public string workParameter = "isWorking";
+    [field: SerializeField] public bool isWorking { get; private set; }
 
     [Tooltip("Скорость поворота к стройке")]
     public float turnSpeed = 8f;
@@ -78,16 +65,6 @@ public class Builder : MonoBehaviour
     private ResourcesMove resourcesMove;
     private Unit unit;
     private Animator animator;
-
-    private int workHash;
-    private bool hasWorkParameter;
-
-    // Какое состояние анимации работы сейчас включено (для возврата в Idle
-    // и для проверки, что строитель из него не выпал).
-    private bool workAnimationPlaying;
-    private int workStateHash;
-    private int workAnimationLayer;
-    private float nextWorkAnimCheck;
 
     private ConstructionSite currentSite;
     private ConstructionSite orderedSite;
@@ -125,7 +102,7 @@ public class Builder : MonoBehaviour
 
     /// <summary>Скорость этого строителя (используется площадкой).</summary>
     public float WorkSpeed => Mathf.Max(0.05f, workSpeed);
-    public bool ControlsWorkAnimation=>isActiveAndEnabled&&workAnimationPlaying&&(working||repairTarget!=null)
+    public bool ControlsWorkAnimation=>isActiveAndEnabled&&isWorking&&(working||repairTarget!=null)
         &&resourcesMove!=null&&resourcesMove.role==ResourcesMove.UnitRole.Builder
         &&!UnitEat.ControlsMovement(this)&&!BattleCombatant.BlocksActions(this)
         &&(goScript==null||!goScript.HasPlayerOrder);
@@ -166,8 +143,8 @@ public class Builder : MonoBehaviour
             attackController.targetToAttack = null;
         }
 
-        workHash = Animator.StringToHash(workParameter);
-        hasWorkParameter = HasBoolParameter(animator, workParameter);
+        workParameter = "isWorking";
+
 
         if (!allBuilders.Contains(this))
             allBuilders.Add(this);
@@ -285,8 +262,9 @@ public class Builder : MonoBehaviour
             LogState($"нашёл стройку {currentSite.name} — иду строить");
         }
 
-        if (agent == null || !agent.isOnNavMesh)
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh)
         {
+            StopWorking();
             LogProblem(agent == null
                 ? "не может идти: на юните нет NavMeshAgent"
                 : "не может идти: NavMeshAgent не стоит на NavMesh");
@@ -573,7 +551,7 @@ public class Builder : MonoBehaviour
 
     private void MoveTowards(Vector3 point)
     {
-        if (agent == null || !agent.isOnNavMesh)
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh)
             return;
 
         agent.isStopped = false;
@@ -582,7 +560,7 @@ public class Builder : MonoBehaviour
 
     private void StopAgent()
     {
-        if (agent == null || !agent.isOnNavMesh)
+        if (agent == null || !agent.enabled || !agent.isOnNavMesh)
             return;
 
         if (agent.hasPath)
@@ -632,174 +610,11 @@ public class Builder : MonoBehaviour
         transform.rotation = Quaternion.Slerp(transform.rotation, look, Time.deltaTime * Mathf.Max(0.1f, turnSpeed));
     }
 
-    // ------------------------------------------------------------------ Анимация
-
-    /// <summary>
-    /// Включает анимацию работы. Одного bool недостаточно: в контроллере
-    /// переход в Attack State есть только из Following State, а строитель
-    /// стоит в idle State — поэтому клип удара/рубки включаем напрямую.
-    /// Клип удара зациклен, так что он крутится всё время стройки.
-    /// </summary>
+    // Work animation is driven by its own bool, never by combat states.
     private void StartWorkAnimation()
-    {
-        if (animator == null || !hasWorkParameter)
-            return;
-
-        animator.SetBool(workHash, true);
-
-        if (workAnimationPlaying)
-            return;
-
-        workAnimationPlaying = true;
-        nextWorkAnimCheck = 0f;
-
-        if (PlayOnVisibleLayers(workStates, out int layer, out int hash))
-        {
-            workAnimationLayer = layer;
-            workStateHash = hash;
-            return;
-        }
-
-        int fallback = Mathf.Clamp(animationLayer, 0, Mathf.Max(0, animator.layerCount - 1));
-
-        if (TryCrossFade(fallback, workStates, out hash))
-        {
-            workAnimationLayer = fallback;
-            workStateHash = hash;
-            return;
-        }
-
-        workAnimationPlaying = false;
-        Debug.LogWarning($"[Builder] {name}: в Animator нет состояний " +
-                         $"«{string.Join("» / «", workStates)}» — анимация стройки не включится.", this);
-    }
-
-    /// <summary>Возвращает строителя в стойку после работы.</summary>
+    { isWorking = true; WorkerAnimation.Apply(animator, true); }
     private void StopWorkAnimation()
-    {
-        if (animator == null || !hasWorkParameter)
-            return;
-
-        animator.SetBool(workHash, false);
-
-        if (!workAnimationPlaying)
-            return;
-
-        workAnimationPlaying = false;
-        workStateHash = 0;
-
-        // Из Attack State переход идёт в Following State (шаг на месте),
-        // поэтому в Idle переводим напрямую.
-        if (PlayOnVisibleLayers(idleStates, out _, out _))
-            return;
-
-        int fallback = Mathf.Clamp(animationLayer, 0, Mathf.Max(0, animator.layerCount - 1));
-        TryCrossFade(fallback, idleStates, out _);
-    }
-
-    /// <summary>
-    /// Страховка: если Animator всё-таки ушёл из состояния работы
-    /// (например, из-за перехода по IsFollowing), возвращаем клип удара.
-    /// </summary>
+    { isWorking = false; WorkerAnimation.Apply(animator, false); }
     private void EnsureWorkAnimation()
-    {
-        if ((!working && repairTarget == null) || !workAnimationPlaying || animator == null)
-            return;
-
-        // Параметром работы владеет строитель, а не боевой StateMachineBehaviour.
-        if(hasWorkParameter)animator.SetBool(workHash,true);
-
-        if (Time.time < nextWorkAnimCheck)
-            return;
-
-        nextWorkAnimCheck = Time.time + 0.3f;
-
-        if (workAnimationLayer < 0 || workAnimationLayer >= animator.layerCount)
-            return;
-
-        if (animator.IsInTransition(workAnimationLayer))
-            return;
-
-        if (animator.GetCurrentAnimatorStateInfo(workAnimationLayer).shortNameHash == workStateHash)
-            return;
-
-        if (TryCrossFade(workAnimationLayer, workStates, out int hash))
-            workStateHash = hash;
-    }
-
-    private bool PlayOnVisibleLayers(string[] stateNames, out int usedLayer, out int usedHash)
-    {
-        usedLayer = -1;
-        usedHash = 0;
-
-        if (animator == null)
-            return false;
-
-        bool played = false;
-
-        for (int layer = 0; layer < animator.layerCount; layer++)
-        {
-            if (animator.GetLayerWeight(layer) <= 0.01f)
-                continue;
-
-            if (!TryCrossFade(layer, stateNames, out int hash))
-                continue;
-
-            if (!played)
-            {
-                usedLayer = layer;
-                usedHash = hash;
-                played = true;
-            }
-        }
-
-        return played;
-    }
-
-    private bool TryCrossFade(int layer, string[] stateNames, out int playedHash)
-    {
-        playedHash = 0;
-
-        if (animator == null || stateNames == null)
-            return false;
-
-        if (layer < 0 || layer >= animator.layerCount)
-            return false;
-
-        foreach (string stateName in stateNames)
-        {
-            if (string.IsNullOrEmpty(stateName))
-                continue;
-
-            int hash = Animator.StringToHash(stateName);
-
-            if (!animator.HasState(layer, hash))
-                continue;
-
-            playedHash=hash;
-            if(animator.GetCurrentAnimatorStateInfo(layer).shortNameHash==hash
-                ||(animator.IsInTransition(layer)&&animator.GetNextAnimatorStateInfo(layer).shortNameHash==hash))return true;
-            animator.CrossFadeInFixedTime(hash, Mathf.Max(0.01f, workAnimationFade), layer, 0f);
-            playedHash = hash;
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool HasBoolParameter(Animator animator, string parameterName)
-    {
-        if (animator == null || animator.runtimeAnimatorController == null ||
-            string.IsNullOrEmpty(parameterName))
-            return false;
-
-        foreach (AnimatorControllerParameter parameter in animator.parameters)
-        {
-            if (parameter.type == AnimatorControllerParameterType.Bool &&
-                parameter.name == parameterName)
-                return true;
-        }
-
-        return false;
-    }
+    { WorkerAnimation.Apply(animator, isWorking); }
 }

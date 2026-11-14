@@ -42,6 +42,8 @@ public class CursorManager : MonoBehaviour
 
     void Update()
     {
+        if (SettingsMenu.BlocksWorldInput)
+        { markerInstance?.SetActive(false); Cursor.visible = true; return; }
         if (RoadBuilder.BlocksWorldInput)
         { markerInstance?.SetActive(false); Cursor.visible=true; return; }
         // Во время выбора сборного пункта сам флажок заменяет курсор.

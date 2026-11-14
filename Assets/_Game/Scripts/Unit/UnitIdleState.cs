@@ -15,6 +15,11 @@ public class UnitIdleState : StateMachineBehaviour
     override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
         if(SaveGameManager.IsLoading)return;
+        if(SiegeLadderAnimation.Controls(animator))return;
+        if(WorkerAnimation.Controls(animator))return;
+        if(animator.GetComponentInParent<BatteringRam>()!=null)return;
+        var worker = animator.GetComponentInParent<ResourcesMove>();
+        if(ResourceWorker.OwnsTarget(worker,attackController!=null?attackController.targetToAttack:null))return;
         if (UnitEat.ControlsMovement(animator)) return;
         if(Builder.ControlsAnimation(animator))return;
         if (BattleCombatant.BlocksActions(animator)) return;

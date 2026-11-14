@@ -1,0 +1,9 @@
+# Bandit camp concept
+
+Generated with built-in imagegen. Style reference: Hunter_Hut_Concept_v1.png.
+
+Use case: stylized-concept.
+Create a polished landscape concept art sheet for a medieval RTS BANDIT CAMP, consistent with the visual world of the provided hunter hut reference. Reference image is STYLE ONLY; create a distinctive camp, not a copy of the house.
+Hand-painted stylized low-poly 3D miniature diorama, warm timber, weathered beige stone, muted blue-grey and brown materials, soft golden afternoon light, pine forest outskirts. Large isometric hero view occupies left two thirds, smaller reverse view top right and camp detail bottom right. Dark charcoal green backdrop and fine antique gold panel borders. Russian heading exactly "ЛАГЕРЬ РАЗБОЙНИКОВ". No other text or invented game statistics.
+Camp layout: a rough incomplete oval log palisade enclosing a small dirt clearing, wide simple entrance with no grand gatehouse; a low asymmetrical timber shelter with patched plank roof for the bandit leader at rear; two differently shaped worn brown canvas tents, central modest campfire with cooking pot, a restrained cache of stolen crates, two barrels and one small opened chest with gold coins, a weapon rack with swords and spears under a lean-to. One crude raised wooden lookout platform near the entry. Footpaths connect shelters and entrance. Three or four clearly readable medieval bandits with practical worn clothing and mixed equipment for scale. Forest foliage, rocks and scattered grass frame the perimeter without obscuring gameplay space.
+Distinct rustic, makeshift shapes; easy to read from RTS camera, plausible construction, moderate props, coherent asset-friendly layout. Avoid a village cottage facade, blue royal banners, luxury architecture, excessive clutter, oversized skulls, fantasy spikes, gore or torture imagery. Main view shows all important camp elements; secondary view must depict the same layout.

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System;
 using _Game.Scripts.UI;
 using UnityEngine;
 
@@ -10,6 +11,7 @@ public class LootCache : MonoBehaviour
     [Min(0)] public float dangerRadius = 15f;
     private GettingResources cargo;
     public int Amount => Count(Stock);
+    public int AmountFor(Predicate<ResourceType> accepts) => LootTransfer.Count(Stock, accepts);
     private GettingResources Stock => cargo != null ? cargo : (cargo = GetComponent<GettingResources>());
     public bool SafeToCollect=>IsSafeFor(Faction.Player);
     public bool IsSafeFor(GameObject collector)=>collector!=null&&IsSafeFor(FactionMember.Of(collector));
@@ -23,10 +25,10 @@ public class LootCache : MonoBehaviour
     }
     private void OnEnable() { if (!caches.Contains(this)) caches.Add(this); }
     private void OnDisable() { caches.Remove(this); }
-    public int Collect(GettingResources target, int limit)
+    public int Collect(GettingResources target, int limit, Predicate<ResourceType> accepts = null)
     {
         if (target==null||!IsSafeFor(target.gameObject)) return 0;
-        int taken = Transfer(Stock, target, limit);
+        int taken = LootTransfer.Move(Stock, target, limit, accepts);
         if (Amount == 0) Destroy(gameObject);
         return taken;
     }

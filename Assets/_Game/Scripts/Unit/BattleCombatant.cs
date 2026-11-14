@@ -25,7 +25,7 @@ public class BattleCombatant : MonoBehaviour
     private float pushUntil;
     private readonly BattleShock effects = new BattleShock();
     public TroopType Kind => TypeOf(gameObject);
-    public bool Alive => isActiveAndEnabled && unit != null && unit.unitHealth > 0&&!HospitalPatient.Inside(gameObject);
+    public bool Alive => isActiveAndEnabled && unit != null && unit.unitHealth > 0&&!HospitalPatient.Inside(gameObject)&&!ShipPassenger.Aboard(gameObject);
     public Faction Side => FactionMember.Of(gameObject);
     public bool IsStunned => effects.Stunned(Time.time);
     public bool IsDisordered => effects.Disordered(Time.time);
@@ -190,7 +190,7 @@ public class BattleCombatant : MonoBehaviour
     }
     public void Exhaust(float seconds) { effects.Fatigue(Time.time, seconds); }
     public static bool BlocksActions(Component component)
-    { var battle = component.GetComponentInParent<BattleCombatant>(); return battle != null && battle.IsStunned; }
+    { if(ShipPassenger.Aboard(component.gameObject))return true;var battle = component.GetComponentInParent<BattleCombatant>(); return battle != null && battle.IsStunned; }
     public static bool Holds(Component component)
     { var battle = component.GetComponentInParent<BattleCombatant>(); return battle != null && battle.Holding; }
     public static bool Defends(Component component)

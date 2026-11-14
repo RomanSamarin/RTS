@@ -139,6 +139,8 @@ public class Archer : MonoBehaviour
     private void Update()
     {
         if(SaveGameManager.IsLoading)return;
+        if(ShipPassenger.Controls(gameObject)||RamCrewMember.Assigned(gameObject)){StopAttackAnimation();ReleaseRotation();return;}
+        if(SiegeLadderAnimation.Controls(this)){StopAttackAnimation();ReleaseRotation();return;}
         if (UnitEat.ControlsMovement(this)) { StopAttackAnimation(); ReleaseRotation(); return; }
         if (BattleCombatant.BlocksActions(this)) { StopAttackAnimation(); ReleaseRotation(); return; }
         if (cooldown > 0f)
@@ -329,11 +331,24 @@ public class Archer : MonoBehaviour
         arrow.Launch(target, shotDamage, arrowSpeed, gameObject, aimHeight, shotBlockingLayers.value);
     }
 
-    private bool HasClearShot(Transform target)
+    internal bool TryShootFromDeck(ShipHull ship, ShipHull target, float damageMultiplier)
+    {
+        if (!isActiveAndEnabled || arrowPrefab == null) return false;
+        const float hullAimHeight = .65f;
+        if (!HasClearShot(target.transform, ship.transform, hullAimHeight)) return false;
+
+        FaceTarget(target.transform, instant: true);
+        var arrow = Instantiate(arrowPrefab, GetShootPoint(), arrowPrefab.transform.rotation);
+        int shotDamage = Mathf.Max(1, Mathf.RoundToInt(damage * damageMultiplier));
+        arrow.Launch(target.transform, shotDamage, arrowSpeed, ship.gameObject, hullAimHeight, shotBlockingLayers.value);
+        return true;
+    }
+
+    private bool HasClearShot(Transform target, Transform ownHull = null, float? shotAimHeight = null)
     {
         if (arrowPrefab == null) return true; // Shoot выдаст понятное сообщение о неназначенном префабе.
         Vector3 origin = GetShootPoint();
-        arrowPrefab.FlightPlan(origin, target, arrowSpeed, aimHeight, out var end, out _, out float height);
+        arrowPrefab.FlightPlan(origin, target, arrowSpeed, shotAimHeight ?? aimHeight, out var end, out _, out float height);
         int segments = Mathf.Clamp(Mathf.CeilToInt((Vector3.Distance(origin, end) + height * 2f) / 1.5f), 4, 32);
         Vector3 from = origin;
         for (int segment = 1; segment <= segments; segment++)
@@ -350,6 +365,7 @@ public class Archer : MonoBehaviour
                 {
                     Transform hit = shotHits[i].transform;
                     if (hit == transform || hit.IsChildOf(transform)) continue;
+                    if (ownHull != null && (hit == ownHull || hit.IsChildOf(ownHull))) continue;
                     if (hit == target || hit.IsChildOf(target) || target.IsChildOf(hit)) continue;
                     return false;
                 }
@@ -407,7 +423,7 @@ public class Archer : MonoBehaviour
             agent.updateRotation = defaultUpdateRotation;
     }
 
-    private void FaceTarget(Transform target)
+    private void FaceTarget(Transform target, bool instant = false)
     {
         Vector3 direction = target.position - transform.position;
         direction.y = 0f;
@@ -417,7 +433,7 @@ public class Archer : MonoBehaviour
 
         Quaternion lookRotation = Quaternion.LookRotation(direction);
 
-        transform.rotation = turnSpeed > 0f
+        transform.rotation = !instant && turnSpeed > 0f
             ? Quaternion.RotateTowards(transform.rotation, lookRotation, turnSpeed * Time.deltaTime)
             : lookRotation;
     }

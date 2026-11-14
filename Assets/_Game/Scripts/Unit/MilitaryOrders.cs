@@ -29,6 +29,7 @@ public class MilitaryOrders : MonoBehaviour
     {if(debugOrders)Debug.Log($"[Боевые приказы] {name}: {message}",this);}
     private string NotReadyReason()
     {
+        if(RamCrewMember.Assigned(gameObject))return "юнит в расчёте тарана";
         if(command==null)return "нет GOScript";
         if(attack==null)return "нет AttackController";
         if(agent==null)return "нет NavMeshAgent";
@@ -64,7 +65,7 @@ public class MilitaryOrders : MonoBehaviour
         if(Current!=Order.None||tracking)Trace($"Отменён приказ {Current} (новый приказ, отключение или смена стороны).");
         Current=Order.None;patrol=null;tracking=false;Status="";loggedTravel=false;lastPause="";
     }
-    private bool Ready=>command!=null&&attack!=null&&agent!=null&&agent.enabled&&agent.isOnNavMesh;
+    private bool Ready=>command!=null&&attack!=null&&agent!=null&&agent.enabled&&agent.isOnNavMesh&&!RamCrewMember.Assigned(gameObject);
     public bool Patrol(System.Collections.Generic.IList<Vector3> points)
     {
         if(!RequireReady("патрулирование")||points==null||points.Count<2)return false;
@@ -128,6 +129,9 @@ public class MilitaryOrders : MonoBehaviour
         =>unit.GetComponentInParent<MilitaryOrders>()?.Current==Order.Hold;
     public static bool AllowsTarget(GameObject unit,Transform target)
     {
+        if(ShipPassenger.Controls(unit))return false;
+        if(unit.GetComponent<SiegeLadderInstaller>()?.IsBusy??false)return false;
+        if(unit.GetComponent<SiegeLadderClimber>()?.IsBusy??false)return false;
         if(unit.GetComponent<GOScript>()?.IsRetreating??false)return false;
         var orders=unit.GetComponent<MilitaryOrders>();
         return orders==null||orders.Allows(target);

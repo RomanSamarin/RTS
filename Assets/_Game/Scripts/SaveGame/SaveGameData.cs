@@ -13,7 +13,7 @@ using UnityEngine;
 }
 [Serializable] public class SaveEntityData
 {
-    public string id,sceneKey,prefabKey,kind,name,parent;
+    public string id,sceneKey,sceneIdentity,prefabKey,kind,name,parent;
     public Vector3 position,scale;public Quaternion rotation;public bool active;
     public List<SaveNodeData> nodes=new List<SaveNodeData>();
     public List<SaveComponentData> components=new List<SaveComponentData>();

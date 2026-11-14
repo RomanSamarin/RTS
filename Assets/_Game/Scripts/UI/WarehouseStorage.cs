@@ -13,6 +13,18 @@ namespace _Game.Scripts.UI
         internal static readonly ResourceType[] Types = (ResourceType[])Enum.GetValues(typeof(ResourceType));
 
         [SerializeField, Min(0)] private int capacity = 2000;
+        [SerializeField] private bool foodOnly;
+        public bool FoodOnly => foodOnly;
+        public bool Accepts(ResourceType type) => !foodOnly || IsEdible(type)
+            || type == ResourceType.Wheat || type == ResourceType.Flour
+            || type == ResourceType.Fish || type == ResourceType.Meat;
+
+        public int AcceptedCargo(GettingResources cargo)
+        {
+            int count = 0;
+            foreach (var type in Types) if (Accepts(type)) count += cargo.GetStoredAmount(type);
+            return count;
+        }
         [Header("Ресурсы этого склада. Prepared Food — готовая еда без отдельного вида")]
         [SerializeField, Min(0)] private int wood;
         [SerializeField, Min(0)] private int stone;
@@ -29,6 +41,7 @@ namespace _Game.Scripts.UI
         [SerializeField, Min(0)] private int spear;
         [SerializeField, Min(0)] private int bow;
         [SerializeField, Min(0)] private int shield;
+        [SerializeField, Min(0)] private int siegeLadder;
         public event Action StockChanged;
         public int Capacity => capacity;
         public int UsedCapacity
@@ -220,6 +233,7 @@ namespace _Game.Scripts.UI
                 case ResourceType.Spear: return spear;
                 case ResourceType.Bow: return bow;
                 case ResourceType.Shield: return shield;
+                case ResourceType.SiegeLadder: return siegeLadder;
                 default: throw new ArgumentOutOfRangeException(nameof(type), type, null);
             }
         }
@@ -242,6 +256,7 @@ namespace _Game.Scripts.UI
                 case ResourceType.Spear: spear = amount; break;
                 case ResourceType.Bow: bow = amount; break;
                 case ResourceType.Shield: shield = amount; break;
+                case ResourceType.SiegeLadder: siegeLadder = amount; break;
                 default: throw new ArgumentOutOfRangeException(nameof(type), type, null);
             }
         }
@@ -250,6 +265,7 @@ namespace _Game.Scripts.UI
         public int AddResource(ResourceType type, int amount)
         {
             if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));
+            if (!Accepts(type)) return 0;
             int accepted = Mathf.Min(amount, FreeCapacity);
             SetStoredAmount(type, checked(GetStoredAmount(type) + accepted));
             if (accepted > 0) NotifyChanged();
@@ -292,6 +308,7 @@ namespace _Game.Scripts.UI
             int transferred = 0;
             foreach (ResourceType type in Types)
             {
+                if (!Accepts(type)) continue;
                 int accepted = Mathf.Min(cargo.GetStoredAmount(type), FreeCapacity);
                 SetStoredAmount(type, GetStoredAmount(type) + accepted);
                 cargo.RemoveStoredAmount(type, accepted);

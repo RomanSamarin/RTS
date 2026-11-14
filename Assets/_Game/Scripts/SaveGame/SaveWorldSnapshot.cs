@@ -11,16 +11,34 @@ public sealed class SaveWorldSnapshot
     private readonly SaveAssetCatalog catalog;
     private readonly Dictionary<GameObject,string> sceneKeys=new Dictionary<GameObject,string>();
     private readonly Dictionary<string,GameObject> sceneObjects=new Dictionary<string,GameObject>();
+    private readonly Dictionary<GameObject,string> sceneIdentities=new Dictionary<GameObject,string>();
+    private readonly Dictionary<string,GameObject> namedSceneObjects=new Dictionary<string,GameObject>();
     private readonly Dictionary<string,GameObject> entities=new Dictionary<string,GameObject>();
+    private bool sceneLayoutChanged;
     private readonly SaveStateCodec codec;
-    private static readonly HashSet<string> anchors=new HashSet<string>{"Unit","BuildingHealth","OreDeposit","IronVein","GoldVein","StoneQuarry","BerryBush","FarmField","WildlifeAnimal","FishingSpot","ConstructionSite","RoadStroke","RoadTile","ArmyGroup","LootCache","GettingResources","Resource","ResourceHealth","WoodResource"};
+    private static readonly HashSet<string> anchors=new HashSet<string>{"Unit","BuildingHealth","OreDeposit","IronVein","GoldVein","StoneQuarry","BerryBush","FarmField","WildlifeAnimal","FishingSpot","ConstructionSite","RoadStroke","RoadTile","ArmyGroup","LootCache","ShipWreck","GettingResources","Resource","ResourceHealth","WoodResource"};
     private static readonly HashSet<string> controllers=new HashSet<string>{"ObjectPlacer","PlacementSystem","UnitManager","ResourcesManager","RaidManager","ManagerGO","UnitSpawningVillage"};
     public SaveWorldSnapshot(Scene scene,SaveAssetCatalog assets)
     {
         catalog=assets;codec=new SaveStateCodec{Reference=Reference,Resolve=Resolve};
-        foreach(var root in scene.GetRootGameObjects())foreach(var node in root.GetComponentsInChildren<Transform>(true))
-        {string key=ScenePath(node);sceneKeys[node.gameObject]=key;sceneObjects[key]=node.gameObject;}
+        IndexScene(scene.GetRootGameObjects().Select(root => root.transform), "");
         MarkRoots();
+    }
+    private void IndexScene(IEnumerable<Transform> siblings, string parent)
+    {
+        var occurrences = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var node in siblings)
+        {
+            occurrences.TryGetValue(node.name, out int occurrence);
+            occurrences[node.name] = occurrence + 1;
+            string identity = parent + "/" + Uri.EscapeDataString(node.name) + ":" + occurrence;
+            string key = ScenePath(node);
+            sceneKeys[node.gameObject] = key;
+            sceneObjects[key] = node.gameObject;
+            sceneIdentities[node.gameObject] = identity;
+            namedSceneObjects[identity] = node.gameObject;
+            IndexScene(node.Cast<Transform>(), identity);
+        }
     }
     private static string ScenePath(Transform transform)
     {return transform.parent==null?transform.GetSiblingIndex().ToString():ScenePath(transform.parent)+"/"+transform.GetSiblingIndex();}
@@ -35,7 +53,7 @@ public sealed class SaveWorldSnapshot
     }
     private bool Anchor(GameObject obj)
     {
-        if(obj.GetComponentInParent<Canvas>()!=null)return false;
+        if(obj.GetComponentInParent<Canvas>(true)!=null)return false;
         var road=obj.GetComponent<RoadStroke>();if(road!=null)return road.IsBuilt;
         foreach(var script in obj.GetComponents<MonoBehaviour>())if(script!=null&&anchors.Contains(script.GetType().Name))return true;
         return obj.GetComponent<SaveEntity>()!=null;
@@ -66,7 +84,7 @@ public sealed class SaveWorldSnapshot
         string owner;
         var marker=obj.GetComponentInParent<SaveEntity>(true);
         if(marker!=null)owner="entity:"+marker.id+"|"+NodePath(obj.transform,marker.transform);
-        else if(sceneKeys.TryGetValue(obj,out var key))owner="scene:"+key;
+        else if(sceneIdentities.TryGetValue(obj,out var identity))owner="sceneName:"+identity;
         else return null;
         if(component!=null)
         {
@@ -81,7 +99,8 @@ public sealed class SaveWorldSnapshot
         if(key.StartsWith("asset:"))return catalog.Resolve(key.Substring(6));
         int c=key.IndexOf("|component|",StringComparison.Ordinal);string owner=c>=0?key.Substring(0,c):key;
         GameObject obj=null;
-        if(owner.StartsWith("scene:"))sceneObjects.TryGetValue(owner.Substring(6),out obj);
+        if(owner.StartsWith("sceneName:",StringComparison.Ordinal))namedSceneObjects.TryGetValue(owner.Substring(10),out obj);
+        else if(owner.StartsWith("scene:",StringComparison.Ordinal)&&!sceneLayoutChanged)sceneObjects.TryGetValue(owner.Substring(6),out obj);
         else if(owner.StartsWith("entity:"))
         {
             string[] pair=owner.Substring(7).Split('|');
@@ -89,15 +108,16 @@ public sealed class SaveWorldSnapshot
         }
         if(c<0||obj==null)return obj;
         string[] detail=key.Substring(c+11).Split('|');var type=Type.GetType(detail[0],true);
-        var components=obj.GetComponents(type);int index=int.Parse(detail[1]);return index<components.Length?components[index]:null;
+        var components=obj.GetComponents(type);int index=int.Parse(detail[1]);return index>=0&&index<components.Length?components[index]:null;
     }
     public SaveWorld Capture()
     {
-        MarkRoots();var world=new SaveWorld{scene=SceneManager.GetActiveScene().path,utc=DateTime.UtcNow.ToString("O"),time=Time.time,timeScale=Time.timeScale};
+        entities.Clear();MarkRoots();var world=new SaveWorld{scene=SceneManager.GetActiveScene().path,utc=DateTime.UtcNow.ToString("O"),time=Time.time,timeScale=Time.timeScale};
         foreach(var pair in entities.ToArray())
         {
             var obj=pair.Value;if(obj==null)continue;var marker=obj.GetComponent<SaveEntity>();
             var data=new SaveEntityData{id=marker.id,sceneKey=marker.sceneKey,name=obj.name,position=obj.transform.position,rotation=obj.transform.rotation,scale=obj.transform.localScale,active=obj.activeSelf,parent=Reference(obj.transform.parent)};
+            if (sceneIdentities.TryGetValue(obj, out var identity)) data.sceneIdentity = identity;
             data.holding=FormationHold.TryGetPoint(obj,out data.holdPoint);
             if(data.holding){FormationHold.TryGetFacing(obj,out data.holdFacing);data.holdGroup=FormationHold.GetGroup(obj);}
             var road=obj.GetComponent<RoadStroke>();var site=obj.GetComponent<ConstructionSite>();
@@ -114,11 +134,15 @@ public sealed class SaveWorldSnapshot
                 if(prefab!=null)data.prefabKey=catalog.Key(prefab);
                 else if(obj.GetComponent<ArmyGroup>()!=null)data.kind="army";
                 else if(obj.GetComponent<LootCache>()!=null)data.kind="loot";
+                else if(obj.GetComponent<ShipWreck>()!=null)data.kind="shipWreck";
+                else if(obj.GetComponent<SiegeLadderCart>()!=null)data.kind="siegeLadderCart";
+                else if(obj.GetComponent<BatteringRam>()!=null)data.kind="batteringRam";
+                else if(obj.GetComponent<ShipHull>() is ShipHull hull)data.kind="ship:"+((int)hull.type);
                 else throw new InvalidOperationException("Нет префаба для "+obj.name+". Назначьте SaveEntity.Prefab и обновите каталог сохранений.");
             }
             foreach(var node in obj.GetComponentsInChildren<Transform>(true))
             {
-                if(node!=obj.transform&&node.GetComponentInParent<Canvas>()!=null)continue;
+                if(node!=obj.transform&&node.GetComponentInParent<Canvas>(true)!=null)continue;
                 var state=new SaveNodeData{path=NodePath(node,obj.transform),name=node.name,active=node.gameObject.activeSelf,position=node.localPosition,rotation=node.localRotation,scale=node.localScale};
                 foreach(var item in node.GetComponents<Component>())
                 {
@@ -147,7 +171,7 @@ public sealed class SaveWorldSnapshot
             if(script!=null&&controllers.Contains(script.GetType().Name)&&script.gameObject.scene==SceneManager.GetActiveScene())world.controllers.Add(CaptureComponent(script,"",Reference(script.gameObject)));
         return world;
     }
-    private static bool Savable(MonoBehaviour script)=>script!=null&&SaveStateCodec.GameType(script.GetType())&&!(script is SaveEntity)&&!(script is SaveGameManager)&&script.GetComponentInParent<Canvas>()==null;
+    private static bool Savable(MonoBehaviour script)=>script!=null&&SaveStateCodec.GameType(script.GetType())&&!(script is SaveEntity)&&!(script is SaveGameManager)&&!(script is HealthTracker)&&script.GetComponentInParent<Canvas>(true)==null;
     private SaveComponentData CaptureComponent(MonoBehaviour script,string owner,string path)
     {return new SaveComponentData{owner=owner,path=path,type=script.GetType().AssemblyQualifiedName,index=Array.IndexOf(script.GetComponents(script.GetType()),script),enabled=script.enabled,fields=codec.CaptureFields(script)};}
     public static T Field<T>(object obj,string name)
@@ -170,16 +194,65 @@ public sealed class SaveWorldSnapshot
     // Первый этап вызывается после перезагрузки сцены, до восстановления связей.
     public void CreateEntities(SaveWorld world)
     {
-        var savedIds=new HashSet<string>(world.entities.Select(e=>e.id));
-        foreach(var pair in entities.ToArray())if(pair.Value!=null&&!savedIds.Contains(pair.Key)){pair.Value.SetActive(false);UnityEngine.Object.Destroy(pair.Value);entities.Remove(pair.Key);}
+        var original = entities.Values.Where(obj => obj != null).ToArray();
+        var authored = new HashSet<GameObject>(original.Where(sceneKeys.ContainsKey));
+        var savedSceneEntities = world.entities.Where(data => !string.IsNullOrEmpty(data.sceneKey)).ToArray();
+        sceneLayoutChanged = savedSceneEntities.Any(data =>
+        {
+            var candidate = ExactSceneMatch(data, authored);
+            return candidate == null || sceneKeys[candidate] != data.sceneKey;
+        });
+        codec.PreserveLegacySceneReferences = sceneLayoutChanged;
+
+        var matched = new Dictionary<string, GameObject>();
+        var used = new HashSet<GameObject>();
+        var byName = authored.ToLookup(obj => obj.name);
+        foreach (var data in savedSceneEntities)
+        {
+            var candidate = ExactSceneMatch(data, authored);
+            // Legacy sibling indices can point at a different copy of a repeated object.
+            if (candidate == null || (sceneLayoutChanged && string.IsNullOrEmpty(data.sceneIdentity) &&
+                                      byName[data.name].Count() > 1))
+            {
+                var sameName = byName[data.name];
+                candidate = sameName.Where(obj => !used.Contains(obj))
+                    .OrderBy(obj => (obj.transform.position - data.position).sqrMagnitude).FirstOrDefault();
+                if (candidate != null && sameName.Count() > 1 &&
+                    (candidate.transform.position - data.position).sqrMagnitude > 4f)
+                    candidate = null;
+            }
+            if (candidate != null && used.Add(candidate)) matched.Add(data.id, candidate);
+        }
+
+        foreach (var obj in original)
+        {
+            if (used.Contains(obj) || (authored.Contains(obj) && (sceneLayoutChanged || obj.GetComponent<TownHall>() != null))) continue;
+            obj.SetActive(false);
+            UnityEngine.Object.Destroy(obj);
+        }
+        if (matched.Count < savedSceneEntities.Length)
+            Debug.LogWarning($"[Сохранения] Сцена изменилась. Для {savedSceneEntities.Length - matched.Count} объектов использовано текущее состояние карты.");
+        entities.Clear();
+
         foreach(var data in world.entities)
         {
-            if(entities.TryGetValue(data.id,out var existing)&&existing!=null){EnsureComponents(existing,data);if(data.active)existing.SetActive(true);continue;}
-            if(!string.IsNullOrEmpty(data.sceneKey)&&sceneObjects.TryGetValue(data.sceneKey,out existing)&&existing!=null){entities[data.id]=existing;EnsureComponents(existing,data);if(data.active)existing.SetActive(true);continue;}
+            if (!string.IsNullOrEmpty(data.sceneKey))
+            {
+                if (matched.TryGetValue(data.id, out var existing))
+                {
+                    entities[data.id] = existing;
+                    if (!sceneLayoutChanged) EnsureComponents(existing, data);
+                    if (data.active) existing.SetActive(true);
+                }
+                continue;
+            }
             if(data.kind=="construction")continue;
             GameObject obj;
             if(!string.IsNullOrEmpty(data.prefabKey))obj=UnityEngine.Object.Instantiate((GameObject)catalog.Resolve(data.prefabKey),data.position,data.rotation);
-            else obj=data.kind=="loot"?GameObject.CreatePrimitive(PrimitiveType.Cube):new GameObject(data.name);
+            else if(data.kind=="siegeLadderCart")obj=SiegeLadderCartFactory.CreatePlaceholder(data.position,data.rotation);
+            else if(data.kind=="batteringRam")obj=BatteringRam.CreatePlaceholder(data.position,data.rotation);
+            else if(data.kind!=null&&data.kind.StartsWith("ship:"))obj=ShipFactory.CreatePlaceholder((ShipType)int.Parse(data.kind.Substring(5)),data.position,data.rotation);
+            else obj=data.kind=="loot"||data.kind=="shipWreck"?GameObject.CreatePrimitive(PrimitiveType.Cube):new GameObject(data.name);
             obj.name=data.name;
             var marker=obj.GetComponent<SaveEntity>()??obj.AddComponent<SaveEntity>();marker.id=data.id;marker.sceneKey=data.sceneKey;
             entities[data.id]=obj;
@@ -191,7 +264,7 @@ public sealed class SaveWorldSnapshot
             }
             EnsureComponents(obj,data);
         }
-        foreach(var data in world.entities.Where(e=>e.kind=="construction"))
+        foreach(var data in world.entities.Where(e=>e.kind=="construction"&&string.IsNullOrEmpty(e.sceneKey)))
         {
             if(entities.TryGetValue(data.id,out var existing)&&existing!=null)continue;
             var building=Resolve(data.constructionBuilding) as GameObject;
@@ -201,12 +274,23 @@ public sealed class SaveWorldSnapshot
             EnsureComponents(site.gameObject,data);
         }
     }
+
+    private GameObject ExactSceneMatch(SaveEntityData data, HashSet<GameObject> authored)
+    {
+        GameObject candidate;
+        if (!string.IsNullOrEmpty(data.sceneIdentity))
+            namedSceneObjects.TryGetValue(data.sceneIdentity, out candidate);
+        else
+            sceneObjects.TryGetValue(data.sceneKey, out candidate);
+        return candidate != null && candidate.name == data.name && authored.Contains(candidate) ? candidate : null;
+    }
+
     private static void EnsureComponents(GameObject root,SaveEntityData data)
     {
         foreach(var state in data.nodes.OrderBy(n=>n.path.Count(c=>c=='/')))
         {
             if(Node(root.transform,state.path)!=null)continue;
-            int split=state.path.LastIndexOf('/');var parent=Node(root.transform,state.path.Substring(0,split));
+            int split=state.path.LastIndexOf('/');var parent=split<0?root.transform:Node(root.transform,state.path.Substring(0,split));
             if(parent==null)throw new InvalidOperationException("Не найден родитель узла "+state.path);
             int index=int.Parse(state.path.Substring(split+1));
             while(parent.childCount<=index){var child=new GameObject(state.name);child.transform.SetParent(parent,false);}
@@ -220,37 +304,59 @@ public sealed class SaveWorldSnapshot
         }
         foreach(var component in data.components)
         {
-            var node=Node(root.transform,component.path);if(node==null)continue;
             Type type=Type.GetType(component.type,true);
-            while(node.GetComponents(type).Length<=component.index)node.gameObject.AddComponent(type);
+            if (type == typeof(HealthTracker)) continue;
+            var node=Node(root.transform,component.path);if(node==null)continue;
+            while (node.GetComponents(type).Length <= component.index)
+                if (node.gameObject.AddComponent(type) == null)
+                    throw new InvalidOperationException("Не удалось восстановить компонент " + type.Name);
         }
     }
     public void Restore(SaveWorld world)
     {
         codec.timeOffset=Time.time-world.time;
+        var records = world.entities.Where(data => entities.ContainsKey(data.id)).ToArray();
         var formationGroups=new Dictionary<int,int>();
-        foreach(var data in world.entities)
+        foreach(var data in records)
         {
-            var obj=entities[data.id];var parent=Resolve(data.parent) as Transform;
-            obj.transform.SetParent(parent,true);obj.transform.SetPositionAndRotation(data.position,data.rotation);obj.transform.localScale=data.scale;
+            var obj=entities[data.id];
+            bool movedInScene = sceneLayoutChanged && !string.IsNullOrEmpty(data.sceneKey);
+            if (!movedInScene) obj.transform.SetParent(Resolve(data.parent) as Transform,true);
+            obj.transform.SetPositionAndRotation(data.position,data.rotation);
+            obj.transform.localScale=data.scale;
             if(data.kind=="road")continue;
             foreach(var state in data.nodes)
             {
-                var node=Node(obj.transform,state.path);if(node==null)continue;
+                var node=RestoreNode(obj,state,movedInScene);if(node==null)continue;
                 var agent=node.GetComponent<NavMeshAgent>();if(agent!=null)agent.enabled=false;
-                node.localPosition=state.position;node.localRotation=state.rotation;node.localScale=state.scale;
+                if (!movedInScene || node != obj.transform)
+                {node.localPosition=state.position;node.localRotation=state.rotation;node.localScale=state.scale;}
                 node.gameObject.SetActive(state.active);
             }
         }
-        foreach(var data in world.entities)foreach(var state in data.components)RestoreComponent(entities[data.id],state);
-        foreach(var state in world.controllers)
-        {var obj=Resolve(state.path) as GameObject;if(obj!=null)RestoreComponent(obj,state,true);}
-        foreach(var data in world.entities)
+        foreach (var data in records)
+        {
+            var obj = entities[data.id];
+            bool movedInScene = sceneLayoutChanged && !string.IsNullOrEmpty(data.sceneKey);
+            foreach (var state in data.components)
+            {
+                var type = Type.GetType(state.type, true);
+                if (type == typeof(HealthTracker)) continue;
+                var node = Node(obj.transform, state.path);
+                if (movedInScene && (node == null || !data.nodes.Any(saved => saved.path == state.path && saved.name == node.name))) continue;
+                RestoreComponent(node, state, type, movedInScene);
+            }
+        }
+        foreach (var state in world.controllers) RestoreController(state);
+        foreach(var data in records)
         {
             var obj=entities[data.id];obj.SetActive(data.active);
+            foreach (var ladder in obj.GetComponentsInChildren<SiegeLadderSite>(true))
+                ladder.RestoreSavedVisuals();
+            bool movedInScene = sceneLayoutChanged && !string.IsNullOrEmpty(data.sceneKey);
             foreach(var state in data.nodes)
             {
-                var node=Node(obj.transform,state.path);if(node==null)continue;
+                var node=RestoreNode(obj,state,movedInScene);if(node==null)continue;
                 for(int i=0;i<state.enabled.Count;i++)
                 {var value=Resolve(state.enabled[i]);if(value is Renderer renderer)renderer.enabled=state.enabledValues[i];else if(value is Collider collider)collider.enabled=state.enabledValues[i];else if(value is Animator animator)animator.enabled=state.enabledValues[i];else if(value is NavMeshObstacle obstacle)obstacle.enabled=state.enabledValues[i];}
                 var body=node.GetComponent<Rigidbody>();
@@ -269,26 +375,87 @@ public sealed class SaveWorldSnapshot
                 if(agent.enabled&&agent.isOnNavMesh){agent.Warp(node.position);if(state.hasGoal)agent.SetDestination(state.goal);}
             }
             var unit=obj.GetComponent<Unit>();if(unit!=null)unit.SetInitialHealthRatio(unit.unitMaxHealth>0?unit.unitHealth/unit.unitMaxHealth:1);
-            obj.GetComponent<FactionMember>()?.RefreshControlRegistration();
+            obj.GetComponent<TroopCombat>()?.RefreshSpearShield();
+            obj.GetComponent<TownHall>()?.RestoreAppearance();
+            obj.GetComponent<CarrierTask>()?.RestoreHandlingAnimation();
             obj.GetComponent<HospitalPatient>()?.RestoreSavedVisibility();
             obj.GetComponent<WallStation>()?.RestoreSavedHooks();
+            obj.GetComponent<SiegeLadderInstaller>()?.RestoreSavedHooks();
+            obj.GetComponent<SiegeLadderClimber>()?.RestoreSavedHooks();
+            obj.GetComponent<RamCrewMember>()?.RestoreSavedHooks();
             obj.GetComponent<WallGateUpgrade>()?.RestoreSavedHooks();
+            obj.GetComponent<ShipNavigation>()?.RestoreSavedHooks();
+            obj.GetComponent<ShipCrewMember>()?.RestoreSavedHooks();
+            obj.GetComponent<ShipTradeRoute>()?.RestoreSavedHooks();
+            obj.GetComponent<ShipPassenger>()?.RestoreSavedHooks();
+            obj.GetComponent<Port>()?.RestoreSavedRepairHooks();
             if(data.holding)
             {
                 if(!formationGroups.TryGetValue(data.holdGroup,out int group)){group=FormationHold.BeginGroup();formationGroups[data.holdGroup]=group;}
                 FormationHold.SetPoint(obj,data.holdPoint,data.holdFacing,group);
             }
         }
+        RebuildUnitRegistries();
         CarrierTask.RebuildSavedReservations();
         PlacementSystem.Instance?.RestoreSavedPlacementHooks();
         foreach(var village in UnityEngine.Object.FindObjectsOfType<UnitSpawningVillage>())village.RestoreSavedSpawning();
         Physics.SyncTransforms();RoadNavigation.Changed();
         _Game.Scripts.UI.ResourcesManager.Instance?.UpdateUI();
     }
-    private void RestoreComponent(GameObject root,SaveComponentData data,bool controller=false)
+
+    private static void RebuildUnitRegistries()
     {
-        var node=controller?root.transform:Node(root.transform,data.path);if(node==null)throw new InvalidOperationException("Изменилась структура префаба "+root.name+data.path);
-        var list=node.GetComponents(Type.GetType(data.type,true));if(data.index>=list.Length)throw new InvalidOperationException("Потерян компонент "+data.type);
-        var component=(MonoBehaviour)list[data.index];codec.RestoreFields(component,data.fields);component.enabled=data.enabled;
+        var orders = ManagerGO.Instance;
+        var population = UnitManager.Instance;
+        if (orders != null) orders.allUnitsList.Clear();
+        if (population != null)
+        {
+            population.allUnits.Clear();
+            population.UnitAmount = 0;
+            population.FoodUnitEat = 0;
+        }
+        foreach (var member in FactionMember.All.ToArray())
+            if (member != null) member.RefreshControlRegistration();
+        if (orders != null)
+            orders.unitsSelected.RemoveAll(unit => unit == null || !orders.allUnitsList.Contains(unit));
+    }
+    private static Transform RestoreNode(GameObject root, SaveNodeData data, bool verifyName)
+    {
+        var node = Node(root.transform, data.path);
+        return node != null && (!verifyName || node.name == data.name) ? node : null;
+    }
+
+    private void RestoreController(SaveComponentData data)
+    {
+        var type = Type.GetType(data.type, true);
+        var owner = Resolve(data.path) as GameObject;
+        if (owner != null && data.index >= 0 && data.index < owner.GetComponents(type).Length)
+        {
+            RestoreComponent(owner.transform, data, type);
+            return;
+        }
+
+        var matches = sceneKeys.Keys.Where(obj => obj != null)
+            .SelectMany(obj => obj.GetComponents(type)).Take(2).ToArray();
+        if (matches.Length == 1)
+        {
+            var controller = (MonoBehaviour)matches[0];
+            codec.RestoreFields(controller, data.fields);
+        }
+        else
+            Debug.LogWarning("[Сохранения] Контроллер из старого сохранения не найден однозначно: " + type.Name);
+    }
+
+    private void RestoreComponent(Transform node, SaveComponentData data, Type type, bool optional = false)
+    {
+        var list = node != null ? node.GetComponents(type) : Array.Empty<Component>();
+        if (data.index < 0 || data.index >= list.Length)
+        {
+            if (optional) return;
+            throw new InvalidOperationException("Потерян компонент " + data.type);
+        }
+        var component = (MonoBehaviour)list[data.index];
+        codec.RestoreFields(component, data.fields);
+        component.enabled = data.enabled;
     }
 }

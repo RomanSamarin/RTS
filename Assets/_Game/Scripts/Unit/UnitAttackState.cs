@@ -12,7 +12,6 @@ public class UnitAttackState : StateMachineBehaviour
     
     public float stopAttackDistance = 2f;
     public float attackRate = 1f; 
-    private float attackTimer;
     private readonly MeleeStrikeClock strikeClock=new MeleeStrikeClock();
     private Transform strikeTarget;
 
@@ -30,15 +29,8 @@ public class UnitAttackState : StateMachineBehaviour
 
             if (attackController != null && attackController.targetToAttack != null)
             {
-                // Проверяем тег или наличие компонента FishingSpot
-                if (attackController.targetToAttack.CompareTag("FishingSpot") || attackController.targetToAttack.GetComponent<FishingSpot>() != null)
-                {
-                    animator.SetInteger("ActionType", 2); // Анимация рыбалки
-                }
-                else
-                {
-                    animator.SetInteger("ActionType", 1); // Анимация топора/меча
-                }
+                if (FactionMember.AreEnemies(attackController.gameObject, attackController.targetToAttack.gameObject))
+                    animator.SetInteger("ActionType", 1);
             }
         }
     }
@@ -46,12 +38,15 @@ public class UnitAttackState : StateMachineBehaviour
     override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
         if(SaveGameManager.IsLoading)return;
-        if(animator.GetComponentInParent<Catapult>()!=null)return;
+        if(SiegeLadderAnimation.Controls(animator)||RamCrewMember.Controls(animator)){strikeClock.Reset();strikeTarget=null;return;}
+        if(animator.GetComponentInParent<Catapult>()!=null || animator.GetComponentInParent<BatteringRam>()!=null)return;
         if (UnitEat.ControlsMovement(animator)) {strikeClock.Reset();return;}
         if (BattleCombatant.BlocksActions(animator)) { strikeClock.Reset();animator.SetBool("isAttacking", false); return; }
         if(Builder.ControlsAnimation(animator)){strikeClock.Reset();strikeTarget=null;return;}
-        if (animator.GetComponentInParent<FoodCart>() != null || animator.GetComponentInParent<CartHorse>() != null) return;
+        if (animator.GetComponentInParent<FoodCart>() != null || animator.GetComponentInParent<SiegeLadderCart>() != null || animator.GetComponentInParent<CartHorse>() != null) return;
         var worker = animator.GetComponentInParent<ResourcesMove>();
+        if (worker != null && ResourceWorker.OwnsTarget(worker, attackController != null ? attackController.targetToAttack : null))
+        { strikeClock.Reset(); WorkerAnimation.Bool(animator, "isAttacking", false); return; }
         if (worker != null && worker.IsTrainingRecruit) return;
         if (worker != null && (worker.IsFoodGatherer || worker.IsProductionWorker || worker.role == ResourcesMove.UnitRole.Miner || worker.role == ResourcesMove.UnitRole.Farmer || worker.role == ResourcesMove.UnitRole.Carrier)) return;
         if (attackController != null && attackController.targetToAttack != null)
@@ -71,16 +66,13 @@ public class UnitAttackState : StateMachineBehaviour
                 return;
             }
 
-            // Определяем, ЧТО это за цель: боевой юнит, рыба или жила камня.
+            // This state handles combat only. Work runs in profession components.
             Unit targetUnit = attackController.targetToAttack.GetComponent<Unit>();
-            FishingSpot targetWater = attackController.targetToAttack.GetComponent<FishingSpot>();
-            StoneQuarry targetQuarry = attackController.targetToAttack.GetComponent<StoneQuarry>();
             BanditCamp targetCamp = attackController.targetToAttack.GetComponent<BanditCamp>();
             Vector3 combatPoint = AttackController.CombatPoint(attackController.targetToAttack,animator.transform.position);
 
             bool hostile=FactionMember.AreEnemies(attackController.gameObject,attackController.targetToAttack.gameObject);
-            bool resource=FactionMember.IsResource(attackController.targetToAttack.gameObject);
-            bool isAttackableTarget = hostile || (resource&&(targetUnit!=null||targetWater!=null||targetQuarry!=null));
+            bool isAttackableTarget = hostile;
 
             // СКЛАДЫ И ДРУГИЕ ЗДАНИЯ (Sawmill, StoneHouse, Warehouse, FishHouse) — НЕ боевые цели!
             // Юнит не должен бить склад: он просто продолжает ИДТИ к нему, чтобы сдать/забрать ресурс.
@@ -105,17 +97,6 @@ public class UnitAttackState : StateMachineBehaviour
                 if(strikeClock.Tick(Time.deltaTime,inRange,period,attackController.strikeWindup))Attack();
             }
             
-            if (!hostile&&attackTimer <= 0)
-            {
-                if (Vector3.Distance(combatPoint, animator.transform.position) <= stopAttackDistance + 0.25f) Attack();
-                var battle = animator.GetComponentInParent<BattleCombatant>();
-                attackTimer = 1f / Mathf.Max(0.05f, attackRate * (battle != null ? battle.AttackRateMultiplier : 1f));
-            }
-            else if(!hostile)
-            {
-                attackTimer -= Time.deltaTime;
-            }
-
             if (attackController.targetToAttack == null)
             {
                 animator.SetBool("isAttacking", false);
@@ -123,9 +104,7 @@ public class UnitAttackState : StateMachineBehaviour
             }
 
             bool isTargetDead = (targetUnit != null && targetUnit.unitHealth <= 0) || 
-                                (targetCamp != null && targetCamp.IsDestroyed) ||
-                                (targetWater != null && targetWater.fishHealth <= 0) ||
-                                (targetQuarry != null && (targetQuarry.stoneHealth <= 0 || targetQuarry.currentStoneLeft <= 0));
+                                (targetCamp != null && targetCamp.IsDestroyed);
 
             if (isTargetDead)
             {
@@ -174,6 +153,7 @@ public class UnitAttackState : StateMachineBehaviour
 
         if (attackController != null && attackController.targetToAttack != null)
         {
+            if (!FactionMember.AreEnemies(attackController.gameObject, attackController.targetToAttack.gameObject)) return;
             var building=attackController.targetToAttack.GetComponentInParent<BuildingHealth>();
             if(building!=null){building.TakeDamage(attackController.unitDamage,attackController.gameObject);return;}
             Unit targetUnit = attackController.targetToAttack.GetComponent<Unit>();
@@ -184,19 +164,6 @@ public class UnitAttackState : StateMachineBehaviour
                 return;
             }
 
-            FishingSpot targetWater = attackController.targetToAttack.GetComponent<FishingSpot>();
-            if (targetWater != null)
-            {
-                targetWater.TakeDamage(1, attackController.gameObject); 
-                return;
-            }
-
-            StoneQuarry targetQuarry = attackController.targetToAttack.GetComponent<StoneQuarry>();
-            if (targetQuarry != null)
-            {
-                targetQuarry.TakeDamage(1, attackController.gameObject); // каждый удар кирки = 1 секунда добычи
-                return;
-            }
         }
     }
 

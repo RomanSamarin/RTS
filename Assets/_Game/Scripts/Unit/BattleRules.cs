@@ -21,12 +21,16 @@ public static class BattleRules
         }
         return result;
     }
-    public static float Incoming(CombatHitKind hit, TroopType type, bool holding, bool cohesive, bool disordered, bool front)
+    public static float Incoming(CombatHitKind hit, TroopType type, bool holding, bool cohesive, bool disordered, bool front, bool hasShield = false)
     {
         float result = disordered ? 1.25f : 1f;
         if (hit == CombatHitKind.Charge || !holding || !front) return result;
         if (type == TroopType.Swordsman) result *= hit == CombatHitKind.Ranged ? (cohesive ? 0.65f : 0.85f) : (cohesive ? 0.8f : 0.9f);
-        else if (type == TroopType.Spearman && cohesive) result *= 0.85f;
+        else if (type == TroopType.Spearman)
+        {
+            if (hit == CombatHitKind.Ranged && hasShield) result *= cohesive ? 0.75f : 0.9f;
+            else if (cohesive) result *= 0.85f;
+        }
         return result;
     }
 }

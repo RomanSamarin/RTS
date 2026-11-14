@@ -135,3 +135,36 @@ MonoBehaviour:
     - resource: Stone
       amount: 10
     <benefits>k__BackingField: []
+  - <Name>k__BackingField: Амбар
+    <ID>k__BackingField: 72
+    description: Хранит зерно, муку и продукты. Обслуживается носильщиками.
+    <Size>k__BackingField: {x: 2, y: 2}
+    <Prefab>k__BackingField: {fileID: 7210894049322588998, guid: f3beb73291dc47499a6484d339010dda, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 30
+    - resource: Stone
+      amount: 10
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: Сторожевая башня
+    <ID>k__BackingField: 73
+    description: Один дозорный замечает разбойников в радиусе 45 метров.
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 7210894049322588998, guid: 229e0db4798241e8bfbae11b350d3d67, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 30
+    - resource: Stone
+      amount: 15
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: Торговый двор
+    <ID>k__BackingField: 74
+    description: Покупает и продаёт товары за золото. Груз доставляют носильщики.
+    <Size>k__BackingField: {x: 2, y: 2}
+    <Prefab>k__BackingField: {fileID: 7210894049322588998, guid: 9e717c6975ba5a1cf9648a83a65a69fc, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 35
+    - resource: Stone
+      amount: 15
+    <benefits>k__BackingField: []

@@ -40,10 +40,17 @@ public static class TrainingEquipmentChecks
 
             a.AddResource(ResourceType.Spear, 1);
             var spear = TrainingLoadout.Get(TroopType.Spearman);
-            Check(second.TryReserveKit(spear), "spearman needs spear only");
+            Check(!second.TryReserveKit(spear) && a.AvailableMaterial(ResourceType.Spear) == 1,
+                "spearman requires a shield and a missing shield does not reserve the spear");
+            b.AddResource(ResourceType.Shield, 1);
+            Check(second.TryReserveKit(spear), "spearman reserves spear and shield");
             second.ReleaseKit(spear);
-            Check(a.AvailableMaterial(ResourceType.Spear) == 1, "cancel before pickup releases warehouse gear");
-            Check(second.TryReserveKit(spear), "rebook spear"); Ship(second, a, ResourceType.Spear, 1); second.ReleaseKit(spear);
+            Check(a.AvailableMaterial(ResourceType.Spear) == 1 && b.AvailableMaterial(ResourceType.Shield) == 1,
+                "cancel before pickup releases both pieces of gear");
+            Check(second.TryReserveKit(spear), "rebook spear and shield");
+            Ship(second, a, ResourceType.Spear, 1);
+            Check(!second.HasKit(spear), "spearman waits until the shield is delivered too");
+            second.ReleaseKit(spear);
             Check(second.StoredOutput == 1, "cancel after delivery exposes surplus for return");
             Check(second.Collect(cargo, 1) == 1 && cargo.GetStoredAmount(ResourceType.Spear) == 1, "surplus gear returns physically");
             a.Deposit(cargo);

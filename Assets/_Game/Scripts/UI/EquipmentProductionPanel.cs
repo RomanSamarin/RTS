@@ -22,7 +22,8 @@ namespace _Game.Scripts.UI
         [SerializeField] private EquipmentProductionBuilding target;
         public EquipmentProductionBuilding Target => target;
         public Sprite GetRecipeSprite(EquipmentProductionBuilding.Recipe recipe)
-            =>recipe.producesUnit?(target as Workshop)?.catapultIcon:GetSprite(recipe.output);
+            =>target is Shipyard yard?yard.IconFor(recipe.shipType)
+                :recipe.producesUnit?(recipe.producesRam?(target as Workshop)?.ramIcon:recipe.producesLadderCart?(target as Workshop)?.ladderCartIcon:(target as Workshop)?.catapultIcon):GetSprite(recipe.output);
         private WorkplaceHiring hiring;
         private readonly List<ProductionRecipeRow> recipeRows = new List<ProductionRecipeRow>();
         private readonly List<ProductionRecipeRow> manualRecipeRows = new List<ProductionRecipeRow>();
@@ -50,7 +51,7 @@ namespace _Game.Scripts.UI
         {
             Listen(); target = building; bound = true;
             hiring = target != null ? target.GetComponent<WorkplaceHiring>() : null;
-            if (titleText != null) titleText.text = target is Blacksmith ? "Кузница" : target is Workshop ? "Мастерская" : target != null ? target.name : "Производство";
+            if (titleText != null) titleText.text = target is Shipyard ? "Судостроительная верфь" : target is Blacksmith ? "Кузница" : target is Workshop ? "Мастерская" : target != null ? target.name : "Производство";
             int count = target != null ? target.Recipes.Count : 0;
             manualRecipeRows.Clear();
             foreach (var row in GetComponentsInChildren<ProductionRecipeRow>(true))
@@ -112,7 +113,9 @@ namespace _Game.Scripts.UI
             if (target == null) return "Выберите здание";
             if (!target.isActiveAndEnabled) return "Здание недоступно";
             if (target.ActiveRecipe == null) return "Нет заказа";
+            if(target is Shipyard shipyard&&shipyard.WaitingForLaunch)return "Корабль готов: "+shipyard.WaitingTask;
             if(target is Workshop workshop&&workshop.WaitingForCatapultExit)return "Катапульта готова: освободите выход";
+            if(target is Workshop ramWorkshop&&ramWorkshop.WaitingForRamExit)return "Таран готов: освободите выход";
             if (Time.timeScale == 0) return "Пауза";
             if (hiring == null || hiring.WorkerCount == 0) return "Нет работников";
             if (!target.CanProduce) return target.WaitingTask;

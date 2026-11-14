@@ -1,6 +1,7 @@
 using System.Text;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace _Game.Scripts.UI
 {
@@ -23,10 +24,14 @@ namespace _Game.Scripts.UI
         public TMP_Text spearText;
         public TMP_Text bowText;
         public TMP_Text shieldText;
+        public TMP_Text siegeLadderText;
         [Header("Вместимость")]
         public TMP_Text capacityText;
         public TMP_Text usedCapacityText;
         public TMP_Text freeCapacityText;
+        [Header("Необязательный найм носильщиков")]
+        public Button hireButton, fireButton;
+        public TMP_Text workersText;
         [Header("Необязательный общий список")]
         [SerializeField] private TMP_Text contentsText;
         [SerializeField] private bool showEmptyResources;
@@ -43,9 +48,30 @@ namespace _Game.Scripts.UI
         private void OnEnable()
         {
             if (warehouse != null) warehouse.StockChanged += Refresh;
+            if (hireButton != null) hireButton.onClick.AddListener(Hire);
+            if (fireButton != null) fireButton.onClick.AddListener(Fire);
             Refresh();
         }
-        private void OnDisable() { Unsubscribe(); }
+        private void OnDisable()
+        {
+            Unsubscribe();
+            if (hireButton != null) hireButton.onClick.RemoveListener(Hire);
+            if (fireButton != null) fireButton.onClick.RemoveListener(Fire);
+        }
+
+        private void Hire()
+        {
+            if (warehouse != null && FactionMember.IsPlayer(warehouse.gameObject))
+                warehouse.GetComponent<WorkplaceHiring>()?.Hire();
+            Refresh();
+        }
+
+        private void Fire()
+        {
+            if (warehouse != null && FactionMember.IsPlayer(warehouse.gameObject))
+                warehouse.GetComponent<WorkplaceHiring>()?.Fire();
+            Refresh();
+        }
         private void Unsubscribe()
         {
             if (warehouse != null) warehouse.StockChanged -= Refresh;
@@ -53,6 +79,14 @@ namespace _Game.Scripts.UI
 
         public void Refresh()
         {
+            if (hireButton != null || fireButton != null || workersText != null)
+            {
+                var hiring = warehouse != null ? warehouse.GetComponent<WorkplaceHiring>() : null;
+                bool owned = hiring != null && FactionMember.IsPlayer(hiring.gameObject);
+                if (hireButton != null) hireButton.interactable = owned;
+                if (fireButton != null) fireButton.interactable = owned;
+                if (workersText != null) workersText.text = hiring != null ? $"Носильщики: {hiring.WorkerCount}/{hiring.maxWorkers}" : "";
+            }
             SetText(woodText, ResourceType.Wood);
             SetText(stoneText, ResourceType.Stone);
             SetText(ironText, ResourceType.Iron);
@@ -68,6 +102,7 @@ namespace _Game.Scripts.UI
             SetText(spearText, ResourceType.Spear);
             SetText(bowText, ResourceType.Bow);
             SetText(shieldText, ResourceType.Shield);
+            SetText(siegeLadderText, ResourceType.SiegeLadder);
             if (capacityText != null) capacityText.text = warehouse != null ? warehouse.UsedCapacity + " / " + warehouse.Capacity : "—";
             if (usedCapacityText != null) usedCapacityText.text = warehouse != null ? warehouse.UsedCapacity.ToString() : "—";
             if (freeCapacityText != null) freeCapacityText.text = warehouse != null ? warehouse.FreeCapacity.ToString() : "—";
@@ -89,6 +124,7 @@ namespace _Game.Scripts.UI
             Append(text, ResourceType.Spear, "Копья");
             Append(text, ResourceType.Bow, "Луки");
             Append(text, ResourceType.Shield, "Щиты");
+            Append(text, ResourceType.SiegeLadder, "Осадные лестницы");
             contentsText.text = warehouse.UsedCapacity == 0 && !showEmptyResources ? "Склад пуст" : text.ToString();
         }
         private void SetText(TMP_Text target, ResourceType type)

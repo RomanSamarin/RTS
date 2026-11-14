@@ -20,7 +20,9 @@ public class GOScript : MonoBehaviour
     {
         get { RefreshCombatOrder(); return isCommandToMove || orders.Current == MovementOrderState.Order.PlayerMove
             || IsRetreating || orders.Current == MovementOrderState.Order.Combat || (GetComponent<MilitaryOrders>()?.BlocksFood ?? false)
-            || (GetComponent<HospitalPatient>()?.IsBusy??false); }
+            || (GetComponent<HospitalPatient>()?.IsBusy??false) || (GetComponent<SiegeLadderInstaller>()?.IsBusy??false)
+            || (GetComponent<SiegeLadderClimber>()?.IsBusy??false)||ShipPassenger.Controls(gameObject)
+            || RamCrewMember.Assigned(gameObject); }
     }
     public event System.Action ManualOrderIssued;
     public void NotifyMilitaryOrder()=>ManualOrderIssued?.Invoke();
@@ -30,9 +32,14 @@ public class GOScript : MonoBehaviour
     {
         get
         {
-            if(HospitalPatient.Inside(gameObject))return false;
+            if(HospitalPatient.Inside(gameObject)||ShipCrewMember.Aboard(gameObject)||ShipPassenger.Aboard(gameObject))return false;
+            if(GetComponent<SiegeLadderClimber>()?.IsClimbing??false)return false;
+            if (RamCrewMember.Seated(gameObject)) return false;
+            if (TryGetComponent<BatteringRam>(out var ram)) return ram.HasCrew;
             var cart = GetComponent<FoodCart>();
             if (cart != null) return cart.CanMove;
+            var siegeCart = GetComponent<SiegeLadderCart>();
+            if (siegeCart != null) return siegeCart.CanMove;
             var horse = GetComponent<CartHorse>();
             return horse == null || !horse.IsHitched;
         }
@@ -109,13 +116,14 @@ public class GOScript : MonoBehaviour
     }
     public void AttackTarget(Transform target)
     {
-        if (target == null) return;
+        if (target == null || RamCrewMember.Assigned(gameObject)) return;
+        if (TryGetComponent<BatteringRam>(out var ram) && (!ram.HasCrew || !ram.CanAttack(target))) return;
         if(!FactionMember.AreEnemies(gameObject,target.gameObject))return;
         var targetOwner=FactionMember.Find(target.gameObject);
         if(targetOwner!=null)target=targetOwner.transform;
         var camp = target.GetComponentInParent<BanditCamp>();
         if (camp != null) { if (camp.IsDestroyed) return; target = camp.transform; }
-        if (GetComponent<FoodCart>() != null || GetComponent<CartHorse>() != null) return;
+        if (GetComponent<FoodCart>() != null || GetComponent<SiegeLadderCart>() != null || GetComponent<CartHorse>() != null) return;
         GetComponent<BattleCombatant>()?.PrepareForOrder();
         FormationHold.Clear(gameObject);
         GetComponent<UnitEat>()?.CancelForCommand(false);

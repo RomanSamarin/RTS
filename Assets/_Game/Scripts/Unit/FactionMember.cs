@@ -29,7 +29,7 @@ public class FactionMember : MonoBehaviour
     {
         var worker=obj.GetComponent<ResourcesMove>();
         var attack=obj.GetComponent<AttackController>();
-        bool ownedWorker=(worker!=null&&worker.role!=ResourcesMove.UnitRole.Soldier)||obj.GetComponent<CartHorse>()!=null||obj.GetComponent<FoodCart>()!=null;
+        bool ownedWorker=(worker!=null&&worker.role!=ResourcesMove.UnitRole.Soldier)||obj.GetComponent<CartHorse>()!=null||obj.GetComponent<FoodCart>()!=null||obj.GetComponent<SiegeLadderCart>()!=null;
         bool hostile=obj.GetComponent<EnemyAi>()!=null||obj.GetComponent<BanditCamp>()!=null||obj.GetComponent<BanditRaider>()!=null;
         bool legacyEnemy=(obj.CompareTag("Enemy")||(attack!=null&&!attack.LegacyPlayerFlag))&&obj.GetComponent<UnityEngine.AI.NavMeshAgent>()!=null;
         bool entity=worker!=null||obj.GetComponent<Unit>()!=null||IsBuilding(obj);
@@ -60,7 +60,8 @@ public class FactionMember : MonoBehaviour
     public static Faction Of(GameObject obj){var member=Find(obj);return member!=null?member.Side:Faction.Neutral;}
     public static void Set(GameObject obj,Faction side){var member=Ensure(obj);if(member!=null)member.SetFaction(side);}
     public static bool IsPlayer(GameObject obj)=>FactionRules.IsControllable(Of(obj));
-    public static bool AreEnemies(GameObject a,GameObject b)=>a!=null&&b!=null&&!HospitalPatient.Inside(a)&&!HospitalPatient.Inside(b)&&FactionRules.AreEnemies(Of(a),Of(b));
+    public static bool AreEnemies(GameObject a,GameObject b)=>a!=null&&b!=null&&!HospitalPatient.Inside(a)&&!HospitalPatient.Inside(b)
+        &&!ShipCrewMember.Aboard(a)&&!ShipCrewMember.Aboard(b)&&!ShipPassenger.Aboard(a)&&!ShipPassenger.Aboard(b)&&FactionRules.AreEnemies(Of(a),Of(b));
     public static bool AreAllies(GameObject a,GameObject b)=>a!=null&&b!=null&&FactionRules.AreAllies(Of(a),Of(b));
     public static bool CanUse(GameObject actor,GameObject building)=>AreAllies(actor,building);
     public void RefreshControlRegistration()
@@ -75,7 +76,7 @@ public class FactionMember : MonoBehaviour
             else UnitManager.Instance.UnregisterUnit(population);
         }
         if(manager==null)return;
-        controllable=controllable&&!HospitalPatient.Inside(gameObject);
+        controllable=controllable&&!HospitalPatient.Inside(gameObject)&&!ShipCrewMember.Aboard(gameObject)&&!ShipPassenger.Aboard(gameObject);
         if(controllable){if(!manager.allUnitsList.Contains(gameObject))manager.allUnitsList.Add(gameObject);}
         else
         {

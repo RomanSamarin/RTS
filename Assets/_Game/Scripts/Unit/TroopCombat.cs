@@ -1,17 +1,33 @@
 using UnityEngine;
 using UnityEngine.AI;
+using _Game.Scripts.UI;
 
 /// <summary>Единые характеристики и контртипы. Auto не меняет характеристики рабочих.</summary>
 [DisallowMultipleComponent]
 public class TroopCombat : MonoBehaviour
 {
     public TroopType troopType = TroopType.Auto;
+    [Tooltip("Дочерняя модель щита на руке копейщика.")]
+    [SerializeField] private GameObject spearShieldVisual;
     public CartHorse MountedHorse { get; private set; }
     private bool configured;
-    private void Start() { if (!configured && troopType != TroopType.Auto) Configure(troopType); }
+    private void Start()
+    {
+        if (!configured && troopType != TroopType.Auto) Configure(troopType);
+        else RefreshSpearShield();
+    }
+
+    public static bool HasShield(GameObject soldier) => (soldier.GetComponent<GettingResources>()?.GetStoredAmount(ResourceType.Shield) ?? 0) > 0;
+
+    internal void RefreshSpearShield()
+    {
+        if (spearShieldVisual != null && spearShieldVisual.transform != transform && spearShieldVisual.transform.IsChildOf(transform))
+            spearShieldVisual.SetActive(BattleCombatant.TypeOf(gameObject) == TroopType.Spearman && HasShield(gameObject));
+    }
     public void Configure(TroopType kind)
     {
         troopType = kind; configured = true;
+        RefreshSpearShield();
         var unit = GetComponent<Unit>();
         float ratio = unit.unitMaxHealth > 0 && unit.unitHealth > 0 ? unit.unitHealth / unit.unitMaxHealth : 1f;
         float health = kind == TroopType.Swordsman ? 140 : kind == TroopType.Spearman ? 100 : kind == TroopType.Cavalry ? 160 : 70;
@@ -69,7 +85,8 @@ public class TroopCombat : MonoBehaviour
         if (target != null)
         {
             bool front = target.Frontal(attacker.transform.position);
-            multiplier *= BattleRules.Incoming(hit, to, target.Holding, target.Cohesive, target.IsDisordered, front);
+            bool spearShield = to == TroopType.Spearman && hit == CombatHitKind.Ranged && HasShield(defender.gameObject);
+            multiplier *= BattleRules.Incoming(hit, to, target.Holding, target.Cohesive, target.IsDisordered, front, spearShield);
             if (hit == CombatHitKind.Ranged && to == TroopType.Swordsman && !front) multiplier *= 1.7f;
         }
         return Mathf.Max(1, Mathf.RoundToInt(damage * multiplier));

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.Rendering;
-using UnityEngine.UI;
 
 /// <summary>
 /// Строительная площадка. Создаётся автоматически, когда игрок ставит здание
@@ -85,9 +84,6 @@ public class ConstructionSite : MonoBehaviour
              "Если пусто — каркас собирается из простых кубов кодом")]
     [SerializeField] private GameObject visualPrefab;
 
-    [Tooltip("Показывать шкалу прогресса над площадкой")]
-    [SerializeField] private bool showProgressBar = true;
-
     [Tooltip("Перекрывать NavMesh под стройплощадкой, чтобы юниты не проходили " +
              "сквозь будущее здание. На готовом здании obstacle включается сам")]
     [SerializeField] private bool blockSurface = true;
@@ -110,12 +106,7 @@ public class ConstructionSite : MonoBehaviour
     // Строители, которые сейчас реально работают на площадке
     private readonly List<Builder> builders = new List<Builder>();
 
-    private GameObject barRoot;
-    private Image barFillImage;
-    private Text barText;
-    private float barWidth = 220f;
     private float barHeight = 2.6f;
-    private const float BarPixelHeight = 30f;
 
     private bool completed;
     public ConstructionMaterials Materials { get; set; }
@@ -250,15 +241,6 @@ public class ConstructionSite : MonoBehaviour
             }
         }
 
-        UpdateProgressBar();
-    }
-
-    private void LateUpdate()
-    {
-        if(SaveGameManager.IsLoading)return;
-        // Шкала всегда повёрнута к камере.
-        if (barRoot != null && Camera.main != null)
-            barRoot.transform.rotation = Camera.main.transform.rotation;
     }
 
     // ------------------------------------------------------------------ Строители
@@ -396,8 +378,13 @@ public class ConstructionSite : MonoBehaviour
         if (blockSurface)
             CreateSurfaceObstacle();
 
-        if (showProgressBar)
-            BuildProgressBar();
+        var placement = PlacementSystem.Instance;
+        if (placement != null && placement.ConstructionProgressPrefab != null)
+        {
+            var progressView = Instantiate(placement.ConstructionProgressPrefab, transform, false);
+            progressView.transform.localPosition = new Vector3(footprintCenter.x, barHeight, footprintCenter.z);
+            progressView.Bind(this);
+        }
     }
 
     /// <summary>
@@ -569,122 +556,6 @@ public class ConstructionSite : MonoBehaviour
         return Mathf.Clamp(height, 1.2f, 20f);
     }
 
-    private void BuildProgressBar()
-    {
-        // World-space Canvas: обычный UI (Image + Text), который висит в мире
-        // и всегда разворачивается к камере.
-        barRoot = new GameObject("ProgressBar", typeof(RectTransform));
-        barRoot.transform.SetParent(transform, false);
-        barRoot.transform.localPosition = new Vector3(footprintCenter.x, barHeight, footprintCenter.z);
-        barRoot.transform.localRotation = Quaternion.identity;
-        barRoot.transform.localScale = Vector3.one * 0.01f;
-
-        Canvas canvas = barRoot.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.WorldSpace;
-        canvas.sortingOrder = 100;
-
-        RectTransform canvasRect = barRoot.GetComponent<RectTransform>();
-        if (canvasRect == null)
-            canvasRect = barRoot.AddComponent<RectTransform>();
-
-        canvasRect.sizeDelta = new Vector2(barWidth, BarPixelHeight);
-
-        // Фон шкалы.
-        Image background = CreateBarImage("Background", barRoot.transform, new Color(0.05f, 0.05f, 0.05f, 0.85f));
-        RectTransform backgroundRect = background.rectTransform;
-        backgroundRect.anchorMin = new Vector2(0.5f, 0.5f);
-        backgroundRect.anchorMax = new Vector2(0.5f, 0.5f);
-        backgroundRect.pivot = new Vector2(0.5f, 0.5f);
-        backgroundRect.anchoredPosition = Vector2.zero;
-        backgroundRect.sizeDelta = new Vector2(barWidth, BarPixelHeight);
-
-        // Заливка: Image в режиме Filled, поэтому ширина меняется без пересчёта.
-        Image fill = CreateBarImage("Fill", background.transform, new Color(0.25f, 0.85f, 0.3f, 1f));
-        fill.type = Image.Type.Filled;
-        fill.fillMethod = Image.FillMethod.Horizontal;
-        fill.fillOrigin = (int)Image.OriginHorizontal.Left;
-        fill.fillAmount = 0f;
-
-        RectTransform fillRect = fill.rectTransform;
-        fillRect.anchorMin = Vector2.zero;
-        fillRect.anchorMax = Vector2.one;
-        fillRect.offsetMin = new Vector2(2f, 2f);
-        fillRect.offsetMax = new Vector2(-2f, -2f);
-        barFillImage = fill;
-
-        // Проценты поверх шкалы.
-        GameObject textObject = new GameObject("Percent", typeof(RectTransform));
-        textObject.transform.SetParent(background.transform, false);
-
-        Text percent = textObject.AddComponent<Text>();
-        percent.font = GetDefaultFont();
-        percent.fontSize = 18;
-        percent.fontStyle = FontStyle.Bold;
-        percent.alignment = TextAnchor.MiddleCenter;
-        percent.color = Color.white;
-        percent.raycastTarget = false;
-        percent.horizontalOverflow = HorizontalWrapMode.Overflow;
-        percent.verticalOverflow = VerticalWrapMode.Overflow;
-        percent.text = "0%";
-
-        Shadow shadow = textObject.AddComponent<Shadow>();
-        shadow.effectColor = new Color(0f, 0f, 0f, 0.9f);
-        shadow.effectDistance = new Vector2(1f, -1f);
-
-        RectTransform textRect = textObject.GetComponent<RectTransform>();
-        textRect.anchorMin = Vector2.zero;
-        textRect.anchorMax = Vector2.one;
-        textRect.offsetMin = Vector2.zero;
-        textRect.offsetMax = Vector2.zero;
-        barText = percent;
-
-        UpdateProgressBar();
-    }
-
-    private static Image CreateBarImage(string partName, Transform parent, Color color)
-    {
-        GameObject imageObject = new GameObject(partName, typeof(RectTransform));
-        imageObject.transform.SetParent(parent, false);
-
-        Image image = imageObject.AddComponent<Image>();
-        image.sprite = GetWhiteSprite();
-        image.color = color;
-        image.raycastTarget = false;
-
-        return image;
-    }
-
-    private static Sprite whiteSprite;
-
-    /// <summary>
-    /// Белый спрайт 1×1. Нужен, чтобы Image в режиме Filled реально
-    /// обрезался по fillAmount (без спрайта Unity рисует простой прямоугольник).
-    /// </summary>
-    private static Sprite GetWhiteSprite()
-    {
-        if (whiteSprite == null)
-        {
-            Texture2D texture = Texture2D.whiteTexture;
-            whiteSprite = Sprite.Create(
-                texture,
-                new Rect(0f, 0f, texture.width, texture.height),
-                new Vector2(0.5f, 0.5f),
-                100f);
-        }
-
-        return whiteSprite;
-    }
-
-    private static Font defaultFont;
-
-    private static Font GetDefaultFont()
-    {
-        if (defaultFont == null)
-            defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-
-        return defaultFont;
-    }
-
     /// <summary>
     /// Красит материал с учётом URP (там основной цвет — _BaseColor)
     /// и встроенного рендера (_Color).
@@ -701,16 +572,5 @@ public class ConstructionSite : MonoBehaviour
 
         if (material.HasProperty("_Color"))
             material.SetColor("_Color", color);
-    }
-
-    private void UpdateProgressBar()
-    {
-        float value = Mathf.Clamp01(Progress01);
-
-        if (barFillImage != null)
-            barFillImage.fillAmount = value;
-
-        if (barText != null)
-            barText.text = Mathf.RoundToInt(value * 100f) + "%";
     }
 }

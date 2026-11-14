@@ -76,9 +76,12 @@ public abstract class RecipeBuilding : MonoBehaviour
         storedInput += amount;
         return amount;
     }
-    public virtual int Collect(GettingResources cargo, int capacity)
+    public virtual int CollectableOutput(WarehouseStorage destination)
+        => destination == null || destination.Accepts(OutputType) ? StoredOutput : 0;
+
+    public virtual int Collect(GettingResources cargo, int capacity, WarehouseStorage destination = null)
     {
-        if (cargo == null) return 0;
+        if (cargo == null || (destination != null && !destination.Accepts(OutputType))) return 0;
         int amount = Mathf.Min(storedOutput, Mathf.Max(0, capacity));
         storedOutput -= amount;
         cargo.AddStoredAmount(OutputType, amount);

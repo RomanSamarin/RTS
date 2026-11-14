@@ -38,6 +38,18 @@ public static class RaidChecks
         Check(warehouse.TryReserveSpace(reservation, 5), "Reserve destination for loot");
         Check(warehouse.DepositReserved(reservation, first) == 5 && LootTransfer.Count(first) == 5, "Arrival deposits only accepted loot");
         Check(warehouse.UsedCapacity + LootTransfer.Count(first) + LootTransfer.Count(rival) == 25, "All resources conserved across physical route");
+        var wreckStock = new GettingResources();
+        var passengerCargo = new GettingResources();
+        wreckStock.AddStoredAmount(ResourceType.Wood, 3);
+        passengerCargo.AddStoredAmount(ResourceType.Wood, 1);
+        passengerCargo.AddStoredAmount(ResourceType.Bread, 5);
+        passengerCargo.AddStoredAmount(ResourceType.Food, 1);
+        LootTransfer.Move(passengerCargo, wreckStock, int.MaxValue);
+        LootTransfer.KeepHalfOfEachResource(wreckStock);
+        Check(wreckStock.GetStoredAmount(ResourceType.Wood) == 2
+            && wreckStock.GetStoredAmount(ResourceType.Bread) == 2
+            && wreckStock.GetStoredAmount(ResourceType.Food) == 0
+            && LootTransfer.Count(passengerCargo) == 0, "Wreck keeps half of each combined commodity without duplicating food");
         Check(rival.Bread == 2 && rival.GetStoredAmount(ResourceType.Sword) == 3, "Actual bread and weapon types preserved");
         Console.WriteLine("Raid and loot checks: PASS");
     }

@@ -11,6 +11,7 @@ public sealed class SaveStateCodec
     public Func<UnityEngine.Object,string> Reference;
     public Func<string,UnityEngine.Object> Resolve;
     public float timeOffset;
+    public bool PreserveLegacySceneReferences;
     private readonly HashSet<object> stack=new HashSet<object>(new ReferenceComparer());
     private class ReferenceComparer:IEqualityComparer<object>
     {public new bool Equals(object a,object b)=>ReferenceEquals(a,b);public int GetHashCode(object a)=>System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(a);}
@@ -35,10 +36,18 @@ public sealed class SaveStateCodec
     private static bool Skip(object owner,string name)
     {
         // Эти объекты генерируются заново и не являются состоянием симуляции.
-        if(owner is ConstructionSite&&(name=="barRoot"||name=="barFillImage"||name=="barText"||name=="disabledBehaviours"))return true;
+        if(owner is ConstructionSite&&(name=="disabledBehaviours"||name=="showProgressBar"||name=="barWidth"))return true;
         if(owner is GOScript&&(name=="lastCommandUpdateFrame"||name=="camera"))return true;
-        if(owner is PlacementSystem&&(name=="buildingState"||name=="placementEndedFrame"))return true;
-        if(owner is ManagerGO&&(name=="militaryInputEndedFrame"||name.StartsWith("IsChoosing")||name=="patrolPoints"||name=="patrolUnits"))return true;
+        if(owner is PlacementSystem&&(name=="buildingState"||name=="placementEndedFrame"||name=="constructionProgressPrefab"||
+            name=="inputManager"||name=="grid"||name=="database"||name=="previewSystem"||name=="objectPlacer"))return true;
+        if(owner is ManagerGO&&(name=="militaryInputEndedFrame"||name.StartsWith("IsChoosing")||name=="patrolPoints"||name=="patrolUnits"||
+            name=="cam"||name=="groundMarker"||name=="militaryCommandPanel"||name=="allUnitsList"))return true;
+        string type = owner.GetType().FullName;
+        if(type=="_Game.Scripts.UI.ResourcesManager"&&(name.EndsWith("Text",StringComparison.Ordinal)||name=="distributing"))return true;
+        if(type=="Unit"&&name=="heathTracker")return true;
+        if(type=="UnitManager"&&(name=="allUnits"||name=="UnitAmount"||name=="FoodUnitEat"))return true;
+        if(type=="RaidManager"&&name=="points")return true;
+        if(type=="UnitSpawningVillage"&&name=="SpawnPoint")return true;
         return false;
     }
     private SaveValue Capture(object value,int depth)
@@ -92,6 +101,13 @@ public sealed class SaveStateCodec
         if(data==null)return;
         foreach(var item in data)
         {
+            int separator = item.name.LastIndexOf('/');
+            if (separator >= 0 && Skip(target, item.name.Substring(separator + 1))) continue;
+            // Repairs moved from shipyards to ports. Old orders are cancelled; delivered
+            // materials remain in the old yard's ordinary production inventory.
+            if(target is Shipyard&&(item.name.StartsWith("Shipyard/repair",StringComparison.Ordinal)
+                ||item.name=="Shipyard/<RepairStatus>k__BackingField"))continue;
+            if(item.name=="ShipHull/<RepairYard>k__BackingField")continue;
             FieldInfo match=null;
             foreach(var field in Fields(target.GetType()))if(field.DeclaringType.FullName+"/"+field.Name==item.name){match=field;break;}
             if(match==null)throw new InvalidOperationException("Поле изменилось: "+item.name);
@@ -107,13 +123,17 @@ public sealed class SaveStateCodec
         if(n.StartsWith("<")&&n.Contains(">"))n=n.Substring(1,n.IndexOf('>')-1);
         return n.StartsWith("next",StringComparison.OrdinalIgnoreCase)||n.EndsWith("At",StringComparison.OrdinalIgnoreCase)
             ||n.EndsWith("Until",StringComparison.OrdinalIgnoreCase)||n.EndsWith("Since",StringComparison.OrdinalIgnoreCase)
-            ||n=="lastProgressTime"||n=="moveStartTime"||n=="lastHostileDamage"||n=="lastWarningTime";
+            ||n=="lastProgressTime"||n=="lastProgress"||n=="moveStartTime"||n=="lastHostileDamage"||n=="lastWarningTime";
     }
     private object Restore(SaveValue value,Type expected,object existing)
     {
         if(value==null||value.kind=="skip")return existing;
         if(value.kind=="null")return null;
-        if(value.kind=="ref")return Resolve(value.text);
+        if(value.kind=="ref")
+        {
+            if (PreserveLegacySceneReferences && value.text.StartsWith("scene:", StringComparison.Ordinal)) return existing;
+            return Resolve(value.text);
+        }
         Type type=Type.GetType(value.type,true);
         if(!expected.IsAssignableFrom(type))throw new InvalidOperationException("Несовместимый тип "+type.FullName);
         if(value.kind=="scalar")return type.IsEnum?Enum.Parse(type,value.text):Convert.ChangeType(value.text,type,CultureInfo.InvariantCulture);

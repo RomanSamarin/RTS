@@ -23,25 +23,54 @@ public class CameraController : MonoBehaviour
     private Vector3 targetPosition;
     private float targetZoom;
     private float targetYaw;
+    public Camera ViewCamera { get; private set; }
 
     void Start()
     {
-        cameraTransform = GetComponentInChildren<Camera>().transform;
-
-        if (cameraTransform == null)
+        ViewCamera = GetComponentInChildren<Camera>();
+        if (ViewCamera == null)
         {
             Debug.LogError("Ошибка: Внутри пустого объекта нет Главной Камеры! Перетащите камеру внутрь него в Иерархии.");
             return;
         }
+        cameraTransform = ViewCamera.transform;
 
         targetPosition = transform.position;
         targetYaw = transform.eulerAngles.y;
         targetZoom = (minZoomDist + maxZoomDist) / 2f;
+        if (!SaveGameManager.IsLoading)
+        {
+            foreach (var building in BuildingManager.AllBuildings)
+            {
+                if (building == null || !building.isActiveAndEnabled || building.IsDead ||
+                    !building.TryGetComponent<TownHall>(out _) || !FactionMember.IsPlayer(building.gameObject)) continue;
+                Vector3 center = building.transform.position;
+                transform.SetPositionAndRotation(center, Quaternion.Euler(0f, targetYaw, 0f));
+                targetPosition = center;
+                float pitch = (minPitch + maxPitch) * .5f;
+                float radians = pitch * Mathf.Deg2Rad;
+                cameraTransform.localPosition = new Vector3(0f, targetZoom * Mathf.Sin(radians), -targetZoom * Mathf.Cos(radians));
+                cameraTransform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
+                break;
+            }
+        }
+    }
+
+    public void CenterOn(Vector3 worldPoint)
+    {
+        if (ViewCamera == null || SaveGameManager.IsLoading || SettingsMenu.BlocksWorldInput) return;
+        var ray = ViewCamera.ViewportPointToRay(new Vector3(.5f, .5f));
+        var ground = new Plane(Vector3.up, worldPoint);
+        Vector3 center = ground.Raycast(ray, out float distance) ? ray.GetPoint(distance) : transform.position;
+        var offset = worldPoint - center;
+        offset.y = 0f;
+        targetPosition = transform.position + offset;
+        transform.position = targetPosition;
     }
 
     void Update()
     {
-        if(SaveGameManager.IsLoading)return;
+        if(SaveGameManager.IsLoading || SettingsMenu.BlocksWorldInput)return;
         if (cameraTransform == null) return;
 
         HandleInput();

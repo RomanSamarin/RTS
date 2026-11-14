@@ -13,6 +13,7 @@ public static class SaveGameChecks
         public UnityEngine.Object workplace;
         public float nextMeal;
         public float progress;
+        public float lastProgress;
         public Vector3 position;
         public Action callback;
         public State self;
@@ -29,11 +30,29 @@ public static class SaveGameChecks
             Check(File.ReadAllText(path)=="second"&&File.ReadAllText(path+".bak")=="first","atomic replacement keeps previous valid save");
             Check(!File.Exists(path+".tmp"),"temporary file not left after success");
             Check(SaveFileStore.Digest("same")==SaveFileStore.Digest("same")&&SaveFileStore.Digest("same")!=SaveFileStore.Digest("tampered"),"checksum detects payload changes");
+
+            string quick = Path.Combine(folder, "quicksave.json");
+            string auto = Path.Combine(folder, "autosave0.json");
+            string backup = Path.Combine(folder, "autosave1.json.bak");
+            var time = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            File.WriteAllText(quick, "quick");
+            File.SetLastWriteTimeUtc(quick, time.AddMinutes(1));
+            File.WriteAllText(auto, "auto");
+            File.SetLastWriteTimeUtc(auto, time.AddMinutes(2));
+            File.WriteAllText(backup, "backup");
+            File.SetLastWriteTimeUtc(backup, time);
+
+            var latest = SaveFileStore.FindLoadCandidates(folder, true);
+            Check(latest.Length == 3 && latest[0] == auto && latest[1] == quick && latest[2] == backup,
+                "Continue searches quick saves, autosaves and backups in newest-first order");
+            var autosaves = SaveFileStore.FindLoadCandidates(folder, false);
+            Check(autosaves.Length == 2 && autosaves[0] == auto && autosaves[1] == backup,
+                "Autosave load excludes quick saves and can recover backup-only slots");
         }
         finally{if(Directory.Exists(folder))Directory.Delete(folder,true);}
         var owner=new UnityEngine.Object();var replacement=new UnityEngine.Object();
         var codec=new SaveStateCodec{Reference=value=>ReferenceEquals(value,owner)?"workplace":null,Resolve=key=>key=="workplace"?replacement:null,timeOffset=100};
-        var original=new State{workplace=owner,nextMeal=20,progress=3,position=new Vector3(1,2,3),callback=()=>{}};
+        var original=new State{workplace=owner,nextMeal=20,progress=3,lastProgress=15,position=new Vector3(1,2,3),callback=()=>{}};
         original.stock[ResourceTypeStub.Fish]=8;original.queue.Add(new Nested{count=2,target=owner});
         var fields=codec.CaptureFields(original);
         // Реальный файловый формат переводит граф полей через JSON.
@@ -44,6 +63,7 @@ public static class SaveGameChecks
         Check(restored.stock.Count==1&&restored.stock[ResourceTypeStub.Fish]==8,"stock replaced rather than added to initial supplies");
         Check(ReferenceEquals(restored.workplace,replacement)&&ReferenceEquals(restored.queue[0].target,replacement),"nested Unity references resolve to recreated objects");
         Check(restored.nextMeal==120&&restored.progress==3,"deadlines rebased; elapsed progress unchanged");
+        Check(restored.lastProgress==115,"ladder installation approach timeout rebased after loading");
         Check(restored.position.x==1&&restored.position.z==3&&restored.queue[0].count==2,"vectors and production queue round trip");
         Check(restored.callback==null,"event callbacks excluded");
         original.self=original;bool rejected=false;try{codec.CaptureFields(original);}catch(InvalidOperationException){rejected=true;}
@@ -55,7 +75,7 @@ public static class SaveGameChecks
 
 // Минимальные контракты Unity и игровых типов только для проверки кодека вне Unity.
 public class GOScript { }
-public class ManagerGO { }
+public class ManagerGO { public static ManagerGO Instance;public System.Collections.Generic.List<UnityEngine.GameObject> unitsSelected=new System.Collections.Generic.List<UnityEngine.GameObject>(); }
 public class ConstructionSite { }
 public class PlacementSystem { }
 public class SaveGameManager { public static bool IsLoading=>false; public static void Stamp(GameObject obj,GameObject prefab){} }

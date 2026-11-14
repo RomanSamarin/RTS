@@ -13,6 +13,19 @@ class Program
         ArmyRejoinChecks.Run();
         MeleeCombatChecks.Run();
         SiegeChecks.Run();
+        SiegeLadderCartChecks.Run();
+        LadderClimbChecks.Run();
+        WorkerAnimationChecks.Run();
+        ShipyardChecks.Run();
+        ShipRepairChecks.Run();
+        ShipPathChecks.Run();
+        ShipCrewChecks.Run();
+        ShipTrafficChecks.Run();
+        ShipTradeRouteChecks.Run();
+        ShipPassengerChecks.Run();
+        ShipProvisionsChecks.Run();
+        PortChecks.Run();
+        TradeYardChecks.Run();
         SquadMovementChecks.Run();
         RecipeChecks.Run();
         SmokehouseChecks.Run();
@@ -54,6 +67,21 @@ class Program
         Check(warehouse.FreeCapacity == 3 && warehouse.ReservedCapacity == 0, "destroyed owner releases slots");
         var overflow = new GettingResources(); overflow.Set(ResourceType.Iron, 8);
         Check(warehouse.Deposit(overflow) == 3 && overflow.GetStoredAmount(ResourceType.Iron) == 5, "partial delivery preserves remainder");
+        var granary = new WarehouseStorage();
+        typeof(WarehouseStorage).GetField("foodOnly", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .SetValue(granary, true);
+        Check(granary.SetCapacity(8) && granary.AddResource(ResourceType.Wood, 5) == 0, "granary refuses building materials");
+        var mixedCargo = new GettingResources();
+        mixedCargo.Set(ResourceType.Wheat, 3);
+        mixedCargo.Set(ResourceType.Fish, 2);
+        mixedCargo.Set(ResourceType.Bread, 3);
+        mixedCargo.Set(ResourceType.Iron, 4);
+        Check(granary.AcceptedCargo(mixedCargo) == 8 && granary.TryReserveSpace(first, 8)
+            && granary.DepositReserved(first, mixedCargo) == 8, "granary reserves and accepts only food from mixed cargo");
+        Check(mixedCargo.GetStoredAmount(ResourceType.Iron) == 4 && granary.Food == 3
+            && !granary.TryReserveFood(first, 4), "raw fish and wheat are not meals");
+        Check(granary.TryReserveFood(first, 3) && granary.PickupReservedFood(first, mixedCargo) == 3
+            && mixedCargo.GetStoredAmount(ResourceType.Bread) == 3 && granary.UsedCapacity == 5, "granary dispatches real bread");
         var kitchen = new WarehouseStorage();
         kitchen.AddResource(ResourceType.Wheat, 10);
         kitchen.AddResource(ResourceType.Flour, 10);
@@ -188,7 +216,7 @@ namespace UnityEngine
         { GameObject.SpawnCount++; return new GameObject().With(new Unit()); }
     }
     public class DisallowMultipleComponent : Attribute { }
-    public class RequireComponent : Attribute { public RequireComponent(Type type) { } }
+    public class RequireComponent : Attribute { public RequireComponent(params Type[] types) { } }
     public class SerializeField : Attribute { }
     public class MinAttribute : Attribute { public MinAttribute(float value) { } }
     public class HeaderAttribute : Attribute { public HeaderAttribute(string value) { } }
@@ -216,6 +244,7 @@ public class GettingResources
     private readonly Dictionary<ResourceType,int> items = new Dictionary<ResourceType,int>();
     public int GetStoredAmount(ResourceType type) => items.TryGetValue(type, out int value) ? value : 0;
     public void Set(ResourceType type, int amount) => items[type] = amount;
+    public void Clear() => items.Clear();
     public void AddStoredAmount(ResourceType type, int amount) => items[type] = GetStoredAmount(type) + amount;
     public void RemoveStoredAmount(ResourceType type, int amount) => items[type] = GetStoredAmount(type) - amount;
     public int PreparedFood { get => GetStoredAmount(ResourceType.Food); set => Set(ResourceType.Food, value); }

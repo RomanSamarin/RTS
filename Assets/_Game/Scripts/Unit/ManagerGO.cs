@@ -33,6 +33,22 @@ public class ManagerGO : MonoBehaviour
     public KeyCode defenseFacingKey=KeyCode.Y;
     public KeyCode retreatKey=KeyCode.V;
     public KeyCode patrolKey=KeyCode.P;
+    [Tooltip("Allow keyboard shortcuts in addition to the on-screen command buttons.")]
+    public bool useMilitaryOrderHotkeys;
+    public SelectedMilitaryCommandPanel militaryCommandPanel;
+    public bool InstallLadderAt(WallSegment wall, Vector3 point)
+    {
+        foreach(var selected in unitsSelected)
+        {
+            var unit=ControllableRoot(selected);
+            if(!SiegeLadderInstaller.CanInstall(unit))continue;
+            var installer=unit.GetComponent<SiegeLadderInstaller>();
+            if(installer!=null&&installer.IsBusy)continue;
+            if(installer==null)installer=unit.AddComponent<SiegeLadderInstaller>();
+            if(installer.TryAssign(wall,point))return true;
+        }
+        MilitaryDebug("Нельзя установить лестницу: проверьте расстояние, свободное место, путь и запас в повозке.");return false;
+    }
     public bool IsChoosingPatrol { get; private set; }
     private readonly List<Vector3> patrolPoints=new List<Vector3>();
     private readonly List<GameObject> patrolUnits=new List<GameObject>();
@@ -86,7 +102,10 @@ public class ManagerGO : MonoBehaviour
         CancelPatrolSelection();
         IsChoosingAttackMove=false;IsChoosingDefenseFacing=false;
         IsChoosingRetreat=unitsSelected.Count>0;
-        MilitaryDebug(IsChoosingRetreat?"Отступление: укажите точку ЛКМ по земле.":"Не выбраны войска для отступления.");
+        if (!IsChoosingRetreat) MilitaryDebug("Не выбраны войска или корабли для отступления.");
+        else if (ShipNavigation.SelectedShips(unitsSelected).Count > 0)
+            MilitaryDebug("Отступление флота: укажите точку ЛКМ по воде.");
+        else MilitaryDebug("Отступление: укажите точку ЛКМ по земле.");
     }
     public void RetreatSelectedTo(Vector3 destination)
     {
@@ -155,6 +174,7 @@ public class ManagerGO : MonoBehaviour
         foreach(var unit in new List<GameObject>(unitsSelected))
         {
             if(ControllableRoot(unit)==null)continue;
+            if(unit.GetComponent<ShipNavigation>() is ShipNavigation ship){ship.Stop();continue;}
             var orders=MilitaryOrders.Ensure(unit);
             if(orders==null){var machine=unit.GetComponent<Catapult>();if(machine!=null)machine.HoldOrder();else MilitaryDebug($"{unit.name}: пропущен — нужна роль Soldier и GOScript.");continue;}
             orders.Hold();
@@ -170,7 +190,15 @@ public class ManagerGO : MonoBehaviour
         MilitaryDebug($"Остановка. Выделено: {unitsSelected.Count}.");
         foreach(var unit in new List<GameObject>(unitsSelected))
             if(ControllableRoot(unit)!=null)
-            {var machine=unit.GetComponent<Catapult>();if(machine!=null)machine.StopOrder();else MilitaryOrders.Ensure(unit)?.Stop();}
+            {
+                if(unit.GetComponent<ShipNavigation>() is ShipNavigation ship){ship.Stop();continue;}
+                var cart=unit.GetComponent<SiegeLadderCart>();
+                if(cart!=null){cart.CancelLoading();unit.GetComponent<GOScript>()?.StopMoving();continue;}
+                var machine=unit.GetComponent<Catapult>();if(machine!=null)machine.StopOrder();
+                else if (unit.TryGetComponent<BatteringRam>(out var ram)) ram.StopOrder();
+                else if (unit.TryGetComponent<RamCrewMember>(out var crew) && crew.IsAssigned) crew.Release();
+                else MilitaryOrders.Ensure(unit)?.Stop();
+            }
     }
     private bool HandleMilitaryInput(Ray ray,bool pointerOverUI)
     {
@@ -178,12 +206,14 @@ public class ManagerGO : MonoBehaviour
         bool typing=selected!=null&&((selected.GetComponentInParent<TMPro.TMP_InputField>()?.isFocused??false)
             ||(selected.GetComponentInParent<UnityEngine.UI.InputField>()?.isFocused??false));
         if(typing)return IsChoosingPatrol||IsChoosingRetreat||IsChoosingAttackMove||IsChoosingDefenseFacing;
-        if(Input.GetKeyDown(patrolKey))BeginPatrol();
-        if(Input.GetKeyDown(retreatKey))BeginRetreat();
-        if(Input.GetKeyDown(holdPositionKey)){HoldSelected();return true;}
-        if(Input.GetKeyDown(stopOrderKey)){StopSelected();return true;}
-        if(Input.GetKeyDown(attackMoveKey))BeginAttackMove();
-        if(Input.GetKeyDown(defenseFacingKey))BeginDefenseFacing();
+        var buttons = militaryCommandPanel != null && militaryCommandPanel.isActiveAndEnabled && !useMilitaryOrderHotkeys
+            ? militaryCommandPanel : null;
+        if ((buttons == null || buttons.patrolButton == null) && Input.GetKeyDown(patrolKey)) BeginPatrol();
+        if ((buttons == null || buttons.retreatButton == null) && Input.GetKeyDown(retreatKey)) BeginRetreat();
+        if ((buttons == null || buttons.holdButton == null) && Input.GetKeyDown(holdPositionKey)) { HoldSelected(); return true; }
+        if ((buttons == null || buttons.stopButton == null) && Input.GetKeyDown(stopOrderKey)) { StopSelected(); return true; }
+        if ((buttons == null || buttons.attackButton == null) && Input.GetKeyDown(attackMoveKey)) BeginAttackMove();
+        if ((buttons == null || buttons.faceDefenseButton == null) && Input.GetKeyDown(defenseFacingKey)) BeginDefenseFacing();
         if(IsChoosingPatrol)
         {
             if(Input.GetKeyDown(KeyCode.Escape)||Input.GetMouseButtonDown(1)||unitsSelected.Count==0)
@@ -201,8 +231,27 @@ public class ManagerGO : MonoBehaviour
         {
             if(Input.GetKeyDown(KeyCode.Escape)||Input.GetMouseButtonDown(1)||unitsSelected.Count==0)
             {IsChoosingRetreat=false;militaryInputEndedFrame=Time.frameCount;return true;}
-            if(!pointerOverUI&&Input.GetMouseButtonDown(0)&&Physics.Raycast(ray,out var retreatHit,Mathf.Infinity,Ground,QueryTriggerInteraction.Ignore))
-                RetreatSelectedTo(retreatHit.point);
+            if (!pointerOverUI && Input.GetMouseButtonDown(0))
+            {
+                var ships = ShipNavigation.SelectedShips(unitsSelected);
+                if (ships.Count > 0)
+                {
+                    if (!ShipNavigation.TryGetWaterPoint(ray, out var waterPoint))
+                        MilitaryDebug("Укажите точку в зоне плавания.");
+                    else
+                    {
+                        int accepted = ShipNavigation.RetreatGroup(ships, waterPoint);
+                        MilitaryDebug($"Отступают корабли: {accepted}/{ships.Count}.");
+                        if (accepted > 0)
+                        {
+                            IsChoosingRetreat = false;
+                            militaryInputEndedFrame = Time.frameCount;
+                        }
+                    }
+                }
+                else if (Physics.Raycast(ray, out var retreatHit, Mathf.Infinity, Ground, QueryTriggerInteraction.Ignore))
+                    RetreatSelectedTo(retreatHit.point);
+            }
             return true;
         }
         if(IsChoosingDefenseFacing)
@@ -282,11 +331,12 @@ public class ManagerGO : MonoBehaviour
         if (number < 1 || number > controlGroups.Length) return;
         var group = controlGroups[number - 1];
         if (group == null) { Debug.Log($"[Группы войск] Группа {number} не назначена. Выделите юнитов и нажмите Ctrl + {number}.", this); return; }
-        group.RemoveAll(unit => unit == null || !unit.activeInHierarchy || ControllableRoot(unit) != unit);
+        group.RemoveAll(unit => unit == null || !unit.activeInHierarchy || (ControllableRoot(unit) != unit&&!ShipPassenger.Aboard(unit)&&!HospitalPatient.Inside(unit)));
         if (group.Count == 0) { Debug.Log($"[Группы войск] Группа {number} пуста.", this); return; }
         DeselectAll();
         foreach (var unit in group)
         {
+            if(ControllableRoot(unit)!=unit)continue;
             unitsSelected.Add(unit);
             TriggerSelectionIndicator(unit, true);
             EnableUnitMovement(unit, true);
@@ -323,10 +373,11 @@ public class ManagerGO : MonoBehaviour
     {
         if(SaveGameManager.IsLoading)return;
         // Клавиатурное выделение не зависит от камеры, лучей и режима размещения.
-        HandleControlGroups();
+        if (!SettingsMenu.BlocksWorldInput) HandleControlGroups();
         // Завершаем приказы на перемещение у всех юнитов (и выделенных, и нет),
         // чтобы по прибытии сбрасывался путь и маркер цели исчезал.
         UpdateMoveCommands();
+        if (SettingsMenu.BlocksWorldInput) return;
 
         if (cam == null) cam = Camera.main;
         if (cam == null) return;
@@ -375,6 +426,15 @@ public class ManagerGO : MonoBehaviour
         // ЛКМ — выбор юнитов
         if (Input.GetMouseButtonDown(0) && !pointerOverUI)
         {
+            if (unitsSelected.Exists(unit=>SiegeLadderInstaller.CanInstall(ControllableRoot(unit)))
+                && Physics.Raycast(ray,out var ladderHit,Mathf.Infinity,~0,QueryTriggerInteraction.Ignore)
+                && ladderHit.collider.GetComponentInParent<WallSegment>() is WallSegment wall
+                && !(wall is WallTower) && wall.GetComponent<WallGate>()==null)
+            {
+                InstallLadderAt(wall,ladderHit.point);
+                militaryInputEndedFrame=Time.frameCount;
+                return;
+            }
             if (WallGate.TryToggleAt(ray)) return;
             if (Physics.Raycast(ray, out hit, Mathf.Infinity, clickable))
             {
@@ -394,8 +454,11 @@ public class ManagerGO : MonoBehaviour
         if (Input.GetMouseButtonDown(1) && unitsSelected.Count > 0)
         {
             if (pointerOverUI) return;
+            if (TryRamCrewOrder(ray)) return;
+            if(ShipTransport.HandleBoardingClick(ray,unitsSelected))return;
+            if(ShipNavigation.HandleCommand(ray,unitsSelected))return;
+            if(SiegeLadderSite.HandleClimbClick(ray,unitsSelected))return;
             if(TryConstructionOrder(ray))return;
-            if (WallWalkway.HandleClick(ray, unitsSelected)) return;
             // Сначала проверяем врагов (но НЕ свои склады и ресурсные объекты — приказ по ним = обычное движение)
             if (TryEnemyUnderCursor(ray,out hit))
             {
@@ -418,6 +481,7 @@ public class ManagerGO : MonoBehaviour
                     }
                 }
             }
+            else if (WallWalkway.HandleClick(ray, unitsSelected)) return;
             // Потом проверяем землю
             else if (Physics.Raycast(ray, out hit, Mathf.Infinity, Ground))
             {
@@ -438,6 +502,22 @@ public class ManagerGO : MonoBehaviour
             }
         }
             CursorSelector();
+    }
+
+    private bool TryRamCrewOrder(Ray ray)
+    {
+        if (!Physics.Raycast(ray, out var hit, Mathf.Infinity, clickable, QueryTriggerInteraction.Ignore)) return false;
+        var ram = hit.collider.GetComponentInParent<BatteringRam>();
+        if (ram == null || !FactionMember.IsPlayer(ram.gameObject)) return false;
+
+        if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+        {
+            ram.ReleaseCrew();
+            return true;
+        }
+        foreach (var selected in unitsSelected)
+            ram.TryAssignCrew(ControllableRoot(selected));
+        return true;
     }
 
     private bool TryConstructionOrder(Ray ray)
@@ -506,7 +586,7 @@ public class ManagerGO : MonoBehaviour
 
         foreach (GameObject unit in unitsSelected)
         {
-            if (unit != null)
+            if (unit != null && unit.GetComponent<ShipHull>() == null && !RamCrewMember.Assigned(unit))
                 units.Add(unit);
         }
 
@@ -723,7 +803,7 @@ public class ManagerGO : MonoBehaviour
     private static GameObject ControllableRoot(GameObject obj)
     {
         var unit=obj!=null?obj.GetComponentInParent<Unit>():null;
-        return unit!=null&&unit.enabled&&unit.unitHealth>0&&!HospitalPatient.Inside(unit.gameObject)&&FactionMember.IsPlayer(unit.gameObject)?unit.gameObject:null;
+        return unit!=null&&unit.enabled&&unit.unitHealth>0&&!HospitalPatient.Inside(unit.gameObject)&&!ShipCrewMember.Aboard(unit.gameObject)&&!ShipPassenger.Aboard(unit.gameObject)&&FactionMember.IsPlayer(unit.gameObject)?unit.gameObject:null;
     }
 
     private void SelectByClicking(GameObject unit)
@@ -734,6 +814,16 @@ public class ManagerGO : MonoBehaviour
         unitsSelected.Add(unit);
         TriggerSelectionIndicator(unit, true);
         EnableUnitMovement(unit, true);
+    }
+
+    public void SelectFromCard(GameObject unit, bool removeFromSelection)
+    {
+        if (BlocksMilitarySelection || SoldiersFormation.IsPlacing || Barracks.BlocksWorldInput
+            || RoadBuilder.BlocksWorldInput || (PlacementSystem.Instance?.BlocksUnitInput ?? false)) return;
+        unit = ControllableRoot(unit);
+        if (unit == null || !unitsSelected.Contains(unit)) return;
+        if (removeFromSelection) MultiSelect(unit);
+        else if (unitsSelected.Count > 1) SelectByClicking(unit);
     }
 
     private void MultiSelect(GameObject unit)

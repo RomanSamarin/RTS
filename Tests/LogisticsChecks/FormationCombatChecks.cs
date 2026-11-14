@@ -24,6 +24,13 @@ public static class FormationCombatChecks
         float frontArrow = BattleRules.Incoming(CombatHitKind.Ranged, TroopType.Swordsman, true, true, false, true);
         float flankArrow = BattleRules.Incoming(CombatHitKind.Ranged, TroopType.Swordsman, true, true, false, false);
         Check(frontArrow < flankArrow, "shield formation provides directional arrow protection");
+        Check(Near(BattleRules.Incoming(CombatHitKind.Ranged, TroopType.Spearman, true, true, false, true, true), 0.75f)
+            && Near(BattleRules.Incoming(CombatHitKind.Ranged, TroopType.Spearman, true, false, false, true, true), 0.9f),
+            "an equipped spear shield protects while holding and improves in formation");
+        Check(Near(BattleRules.Incoming(CombatHitKind.Ranged, TroopType.Spearman, true, true, false, false, true), 1f)
+            && Near(BattleRules.Incoming(CombatHitKind.Ranged, TroopType.Spearman, false, false, false, true, true), 1f)
+            && Near(BattleRules.Incoming(CombatHitKind.Ranged, TroopType.Spearman, true, true, false, true), 0.85f),
+            "spear shield bonus requires frontal defense and legacy spears retain formation protection");
         Check(BattleRules.Incoming(CombatHitKind.Charge, TroopType.Swordsman, true, true, false, true) == 1,
             "formation charge mitigation is applied once by the impact resolver");
 

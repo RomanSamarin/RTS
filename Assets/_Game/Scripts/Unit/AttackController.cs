@@ -21,8 +21,8 @@ public class AttackController : MonoBehaviour
     private void Awake(){FactionMember.Ensure(gameObject);}
     private void TryAcquire(Collider other)
     {
-        if(!autoAcquireTargets||targetToAttack!=null||GetComponent<Archer>()!=null||GetComponent<EnemyAi>()!=null||
-            GetComponent<FoodCart>()!=null||GetComponent<CartHorse>()!=null||UnitEat.ControlsMovement(this))return;
+        if(!autoAcquireTargets||targetToAttack!=null||RamCrewMember.Assigned(gameObject)||GetComponent<Archer>()!=null||GetComponent<EnemyAi>()!=null||
+            GetComponent<FoodCart>()!=null||GetComponent<SiegeLadderCart>()!=null||GetComponent<CartHorse>()!=null||UnitEat.ControlsMovement(this))return;
         var command=GetComponent<GOScript>();if(command!=null&&(command.isCommandToMove||command.IsRetreating))return;
         var candidate=FactionMember.Find(other.gameObject);
         if(candidate==null||!FactionMember.AreEnemies(gameObject,candidate.gameObject))return;
@@ -47,6 +47,7 @@ public class AttackController : MonoBehaviour
     private void Update()
     {
         if(SaveGameManager.IsLoading)return;
+        if(ShipPassenger.Controls(gameObject)||RamCrewMember.Assigned(gameObject)){targetToAttack=null;return;}
         var command=GetComponent<GOScript>();var role=GetComponent<ResourcesMove>();
         if(command!=null&&command.IsRetreating){targetToAttack=null;return;}
         if(Time.time>=nextTargetCheck&&autoAcquireTargets&&role!=null&&role.role==ResourcesMove.UnitRole.Soldier

@@ -21,6 +21,7 @@ public class GettingResources : MonoBehaviour
     public int Spear;
     public int Bow;
     public int Shield;
+    public int SiegeLadder;
 
     // Метод перекладывания ресурсов из объекта в рюкзак рабочего
     public void TakeResource(Unit targetUnit)
@@ -45,6 +46,7 @@ public class GettingResources : MonoBehaviour
             Spear += cargo.Spear;
             Bow += cargo.Bow;
             Shield += cargo.Shield;
+            SiegeLadder += cargo.SiegeLadder;
             cargo.Clear();
         }
     }
@@ -70,6 +72,7 @@ public class GettingResources : MonoBehaviour
             case ResourceType.Spear: return Spear;
             case ResourceType.Bow: return Bow;
             case ResourceType.Shield: return Shield;
+            case ResourceType.SiegeLadder: return SiegeLadder;
             default: throw new System.ArgumentOutOfRangeException(nameof(type), type, null);
         }
     }
@@ -94,6 +97,7 @@ public class GettingResources : MonoBehaviour
             case ResourceType.Spear: Spear -= amount; break;
             case ResourceType.Bow: Bow -= amount; break;
             case ResourceType.Shield: Shield -= amount; break;
+            case ResourceType.SiegeLadder: SiegeLadder -= amount; break;
             default: throw new System.ArgumentOutOfRangeException(nameof(type));
         }
     }
@@ -118,14 +122,15 @@ public class GettingResources : MonoBehaviour
             case ResourceType.Spear: Spear += amount; break;
             case ResourceType.Bow: Bow += amount; break;
             case ResourceType.Shield: Shield += amount; break;
+            case ResourceType.SiegeLadder: SiegeLadder += amount; break;
             default: throw new System.ArgumentOutOfRangeException(nameof(type));
         }
     }
 
     public void Clear()
     {
-        Wood = Stone = Iron = Gold = Wheat = Flour = Bread = PreparedFood = Fish = Meat = Berries = Sword = Spear = Bow = Shield = 0;
+        Wood = Stone = Iron = Gold = Wheat = Flour = Bread = PreparedFood = Fish = Meat = Berries = Sword = Spear = Bow = Shield = SiegeLadder = 0;
     }
 
-    public bool HasCargo => Wood > 0 || Stone > 0 || Iron > 0 || Gold > 0 || Wheat > 0 || Flour > 0 || Bread > 0 || PreparedFood > 0 || Fish > 0 || Meat > 0 || Berries > 0 || Sword > 0 || Spear > 0 || Bow > 0 || Shield > 0;
+    public bool HasCargo => Wood > 0 || Stone > 0 || Iron > 0 || Gold > 0 || Wheat > 0 || Flour > 0 || Bread > 0 || PreparedFood > 0 || Fish > 0 || Meat > 0 || Berries > 0 || Sword > 0 || Spear > 0 || Bow > 0 || Shield > 0 || SiegeLadder > 0;
 }

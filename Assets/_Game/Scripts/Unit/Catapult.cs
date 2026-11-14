@@ -10,6 +10,9 @@ public class Catapult : MonoBehaviour
     public Transform launchPoint;
     public Transform throwingArm;
     public SiegeProjectile projectilePrefab;
+    [Header("Анимация")]
+    public Animator animator;
+    [Min(.05f)] public float attackAnimationSeconds = .6f;
     public bool autoAttackBuildings=true,debugSiege=true;
     public string Status { get; private set; }="Готова";
     private AttackController attack;private GOScript command;private NavMeshAgent agent;
@@ -19,6 +22,11 @@ public class Catapult : MonoBehaviour
     private bool hasRestingArm;
     private float firedAt=-100;
     private bool attackMoving,issuingMove;
+    private enum AnimationState { Unset, Hidden, Idle, Moving, Attacking }
+    [System.NonSerialized] private AnimationState lastAnimationState;
+    [System.NonSerialized] private Animator lastAnimator;
+    [System.NonSerialized] private RuntimeAnimatorController lastAnimationController;
+    private Unit unit;
     public bool HoldingPosition { get; private set; }
     private Vector3 attackMoveGoal;
     private void OnManualOrder(){if(!issuingMove){attackMoving=false;HoldingPosition=false;}}
@@ -44,14 +52,43 @@ public class Catapult : MonoBehaviour
     private void LateUpdate()
     {
         if(SaveGameManager.IsLoading)return;
+        UpdateAnimation();
+        if(ShipPassenger.Controls(gameObject))return;
         if(throwingArm==null)return;
         if(!hasRestingArm){restingArm=throwingArm.localRotation;hasRestingArm=true;}
         float phase=(Time.time-firedAt)/.6f;
         throwingArm.localRotation=phase>=0&&phase<1?restingArm*Quaternion.AngleAxis(-60*Mathf.Sin(phase*Mathf.PI),Vector3.right):restingArm;
     }
+    private void UpdateAnimation()
+    {
+        if (animator == null)
+            animator = unit != null && unit.animator != null ? unit.animator : GetComponentInChildren<Animator>(true);
+        if (animator == null || !animator.isActiveAndEnabled || animator.runtimeAnimatorController == null)
+        {
+            lastAnimationState = AnimationState.Unset;
+            return;
+        }
+
+        var state = AnimationState.Hidden;
+        if (unit != null && unit.unitHealth > 0f && !ShipPassenger.Aboard(gameObject))
+        {
+            bool moving = agent.enabled && agent.isOnNavMesh && !agent.isStopped && agent.velocity.sqrMagnitude > .0025f;
+            float sinceShot = Time.time - firedAt;
+            bool firing = sinceShot >= 0f && sinceShot < Mathf.Max(.05f, attackAnimationSeconds);
+            state = moving ? AnimationState.Moving : firing ? AnimationState.Attacking : AnimationState.Idle;
+        }
+        if (state == lastAnimationState && animator == lastAnimator && animator.runtimeAnimatorController == lastAnimationController) return;
+        lastAnimationState = state;
+        lastAnimator = animator;
+        lastAnimationController = animator.runtimeAnimatorController;
+        WorkerAnimation.Bool(animator, "isMoving", state == AnimationState.Moving);
+        WorkerAnimation.Bool(animator, "idle", state == AnimationState.Idle);
+        WorkerAnimation.Bool(animator, "isAttacking", state == AnimationState.Attacking);
+    }
     private void Awake()
     {
         attack=GetComponent<AttackController>();agent=GetComponent<NavMeshAgent>();command=GetComponent<GOScript>();
+        unit=GetComponent<Unit>();
         if(command==null)command=gameObject.AddComponent<GOScript>();
         var worker=GetComponent<ResourcesMove>();if(worker==null)worker=gameObject.AddComponent<ResourcesMove>();
         worker.role=ResourcesMove.UnitRole.Transport;
@@ -69,6 +106,7 @@ public class Catapult : MonoBehaviour
     private void Update()
     {
         if(SaveGameManager.IsLoading)return;
+        if(ShipPassenger.Controls(gameObject))return;
         if(GetComponent<Unit>().unitHealth<=0||!agent.enabled||!agent.isOnNavMesh)return;
         if(command.IsRetreating)
         {attack.targetToAttack=null;deployedTarget=null;readyAt=Time.time+deploySeconds;Status="Отступает";return;}

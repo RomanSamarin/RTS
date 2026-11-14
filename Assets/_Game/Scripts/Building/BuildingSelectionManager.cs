@@ -47,7 +47,7 @@ public class BuildingSelectionManager : MonoBehaviour
 
     private void Update()
     {
-        if(SaveGameManager.IsLoading)return;
+        if(SaveGameManager.IsLoading || SettingsMenu.BlocksWorldInput)return;
         if(ManagerGO.Instance!=null&&(ManagerGO.Instance.BlocksMilitarySelection||Input.GetKeyDown(ManagerGO.Instance.attackMoveKey)||Input.GetKeyDown(ManagerGO.Instance.defenseFacingKey)||Input.GetKeyDown(ManagerGO.Instance.retreatKey)||Input.GetKeyDown(ManagerGO.Instance.patrolKey)))return;
         if (Barracks.BlocksWorldInput || RoadBuilder.BlocksWorldInput) return;
         if (!Input.GetMouseButtonDown(0)) return;

@@ -17,6 +17,8 @@ public class CavalryCharge : MonoBehaviour
     [Min(0f)] public float fatigueSeconds = 4f;
     public bool ChargeReady => run.Ready(Time.time);
     public float RunDistance => run.Distance;
+    public void ResetTransportMotion()
+    {previousPosition=transform.position;previousDirection=Vector3.zero;run.Tick(Time.time,0,0,0,minimumSpeed,runDistance,true);}
     private readonly ChargeRun run = new ChargeRun();
     private BattleCombatant battle;
     private NavMeshAgent agent;

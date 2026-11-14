@@ -47,6 +47,10 @@ public class PlacementSystem : MonoBehaviour
              "Если пусто — каркас собирается кодом из простых фигур")]
     public GameObject constructionSitePrefab;
 
+    [Tooltip("Необязательно: свой префаб шкалы стройки с Canvas в World Space")]
+    [SerializeField] private ConstructionProgressView constructionProgressPrefab;
+    public ConstructionProgressView ConstructionProgressPrefab => constructionProgressPrefab;
+
     [Tooltip("Своё время стройки для конкретных зданий (по ID из базы)")]
     public List<BuildTimeSetting> buildTimes = new List<BuildTimeSetting>();
 
@@ -355,6 +359,7 @@ public class PlacementSystem : MonoBehaviour
 
     private void Update()
     {
+        if (SettingsMenu.BlocksWorldInput) return;
         // We return because we did not selected an item to place (not in placement mode)
         // So there is no need to show cell indicator
         if (buildingState == null)

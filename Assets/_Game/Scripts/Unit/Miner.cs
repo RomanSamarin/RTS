@@ -8,7 +8,7 @@ public class Miner : MonoBehaviour
     [Min(1f)] public float searchRadius = 200f;
     private ResourcesMove worker;
     private NavMeshAgent agent;
-    private Animator animator;
+    [field: SerializeField] public bool isWorking { get; private set; }
     private OreDeposit target;
     private float nextSearch;
     private bool delivering;
@@ -19,7 +19,7 @@ public class Miner : MonoBehaviour
     {
         worker = GetComponent<ResourcesMove>();
         agent = GetComponent<NavMeshAgent>();
-        animator = GetComponentInChildren<Animator>();
+
         cargo = GetComponent<GettingResources>();
         if (cargo == null) cargo = gameObject.AddComponent<GettingResources>();
     }
@@ -27,11 +27,13 @@ public class Miner : MonoBehaviour
     private void Update()
     {
         if(SaveGameManager.IsLoading)return;
+        SetWorking(false);
+        if (BattleCombatant.BlocksActions(this)) return;
         if (BuildingRoadAccess.PauseWorker(worker)) { SetWorking(false); return; }
         if (UnitEat.ControlsMovement(this)) { SetWorking(false); return; }
         if (worker.role != ResourcesMove.UnitRole.Miner) return;
         var command = GetComponent<GOScript>();
-        if (worker.IsReturningToWorkplace || (command != null && command.isCommandToMove))
+        if (worker.IsReturningToWorkplace || (command != null && command.HasPlayerOrder))
         {
             SetWorking(false);
             return;
@@ -107,16 +109,6 @@ public class Miner : MonoBehaviour
         else cargo.Gold += mined;
     }
 
-    private void SetWorking(bool working)
-    {
-        if (animator == null) return;
-        foreach (var parameter in animator.parameters)
-        {
-            if (parameter.name == "isAttacking" && parameter.type == AnimatorControllerParameterType.Bool)
-                animator.SetBool("isAttacking", working);
-            if (working && parameter.name == "ActionType" && parameter.type == AnimatorControllerParameterType.Int)
-                animator.SetInteger("ActionType", 1);
-        }
-    }
+    private void SetWorking(bool value) { isWorking = value; }
     private void OnDisable() { SetWorking(false); }
 }

@@ -16,7 +16,7 @@ public class FoodGatheringWorker : MonoBehaviour
     private NavMeshAgent agent;
     private GOScript command;
     private AttackController attack;
-    private Animator animator;
+    [field: SerializeField] public bool isWorking { get; private set; }
     private float originalStoppingDistance;
     private bool ownsStoppingDistance;
     public bool IsHunting => worker != null && worker.IsFoodGatherer && isActiveAndEnabled
@@ -30,15 +30,17 @@ public class FoodGatheringWorker : MonoBehaviour
     {
         worker = GetComponent<ResourcesMove>(); cargo = GetComponent<GettingResources>();
         agent = GetComponent<NavMeshAgent>(); command = GetComponent<GOScript>(); attack = GetComponent<AttackController>();
-        animator = GetComponentInChildren<Animator>();
+
     }
     private void Update()
     {
         if(SaveGameManager.IsLoading)return;
+        SetWorking(false);
+        if (BattleCombatant.BlocksActions(this)) return;
         if (BuildingRoadAccess.PauseWorker(worker)) { SetWorking(false); RestoreStoppingDistance(); CurrentTask="Нет дороги к зданию"; return; }
         if (!worker.IsFoodGatherer) { SetWorking(false); RestoreStoppingDistance(); return; }
         if (UnitEat.ControlsMovement(this)) { SetWorking(false); CurrentTask = "Перерыв на еду"; return; }
-        if (command != null && command.isCommandToMove)
+        if (command != null && command.HasPlayerOrder)
         { SetWorking(false); RestoreStoppingDistance(); CurrentTask = "Перемещается"; return; }
         if (!agent.enabled || !agent.isOnNavMesh) { CurrentTask = "Нет доступного пути"; return; }
         if (!ownsStoppingDistance) { originalStoppingDistance = agent.stoppingDistance; ownsStoppingDistance = true; }
@@ -199,17 +201,7 @@ public class FoodGatheringWorker : MonoBehaviour
         routeFailure = $"Статус={path.status}, углов={corners.Length}, от конца пути до добычи={distance:F1} м, дистанция охоты={reach:F1} м, Agent Type={agent.agentTypeID}, Area Mask={agent.areaMask}.";
         return false;
     }
-    private void SetWorking(bool value)
-    {
-        if (animator == null || animator.runtimeAnimatorController == null) return;
-        foreach (var parameter in animator.parameters)
-        {
-            if (parameter.name == "isAttacking" && parameter.type == AnimatorControllerParameterType.Bool)
-                animator.SetBool(parameter.name, value);
-            if (value && parameter.name == "ActionType" && parameter.type == AnimatorControllerParameterType.Int)
-                animator.SetInteger(parameter.name, 1);
-        }
-    }
+    private void SetWorking(bool value) { isWorking = value; }
     private void RestoreStoppingDistance()
     { if (ownsStoppingDistance && agent != null) agent.stoppingDistance = originalStoppingDistance; ownsStoppingDistance = false; }
     private void OnDisable() { SetWorking(false); RestoreStoppingDistance(); }

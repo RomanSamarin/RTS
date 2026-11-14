@@ -108,7 +108,7 @@ public class ArmyGroup : MonoBehaviour
         foreach (var member in members)
         {
             var escort = member.GetComponent<ArmyEscort>();
-            if(HospitalPatient.Controls(member)||ArmyRejoin.Returning(member.gameObject))continue;
+            if(HospitalPatient.Controls(member)||ArmyRejoin.Returning(member.gameObject)||ShipPassenger.Controls(member.gameObject))continue;
             var food = member.GetComponent<UnitEat>();
             if ((escort != null && escort.enabled) || (food != null && food.IsBusy)) continue;
             point = lastAnchor = member.transform.position; forward = member.transform.forward; return true;
@@ -121,7 +121,7 @@ public class ArmyGroup : MonoBehaviour
         Cleanup();point=lastAnchor;forward=transform.forward;moving=false;
         foreach(var member in members)
         {
-            if(member.gameObject==returningSoldier||HospitalPatient.Controls(member)||ArmyRejoin.Returning(member.gameObject))continue;
+            if(member.gameObject==returningSoldier||HospitalPatient.Controls(member)||ArmyRejoin.Returning(member.gameObject)||ShipPassenger.Controls(member.gameObject))continue;
             var food=member.GetComponent<UnitEat>();if(food!=null&&food.IsBusy)continue;
             var nav=member.GetComponent<UnityEngine.AI.NavMeshAgent>();
             if(nav==null||!nav.enabled||!nav.isOnNavMesh)continue;
@@ -141,7 +141,7 @@ public class ArmyGroup : MonoBehaviour
         foreach (var member in members)
         {
             var food = member.GetComponent<UnitEat>();
-            if(HospitalPatient.Inside(member.gameObject))continue;
+            if(HospitalPatient.Inside(member.gameObject)||ShipPassenger.Aboard(member.gameObject))continue;
             if (food == null || food.mode != UnitEat.FeedingMode.Expedition) continue;
             fieldMembers++;
             if (!food.WantEat) continue;

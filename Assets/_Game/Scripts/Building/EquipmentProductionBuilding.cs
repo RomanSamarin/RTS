@@ -20,6 +20,9 @@ public abstract class EquipmentProductionBuilding : RecipeBuilding
         public string title;
         public ResourceType output;
         public bool producesUnit;
+        public bool producesLadderCart;
+        public bool producesRam;
+        public ShipType shipType;
         [Min(1)] public int quantity = 1;
         [Min(0.1f)] public float seconds = 30f;
         public List<Stock> ingredients = new List<Stock>();
@@ -37,8 +40,9 @@ public abstract class EquipmentProductionBuilding : RecipeBuilding
     private struct Delivery { public ResourceType type; public int amount; }
     private readonly Dictionary<Object, Delivery> deliveries = new Dictionary<Object, Delivery>();
     protected abstract List<Recipe> DefaultRecipes();
+    protected virtual void ConfigureDefaults() { }
     protected virtual void PrepareRecipes(List<Recipe> values) { }
-    private void EnsureRecipes() { if (recipes.Count == 0) recipes = DefaultRecipes();PrepareRecipes(recipes); }
+    private void EnsureRecipes() { if (recipes.Count == 0) { ConfigureDefaults(); recipes = DefaultRecipes(); } PrepareRecipes(recipes); }
     private void Awake() { EnsureRecipes(); }
     private void OnValidate() { EnsureRecipes(); }
     public IReadOnlyList<Recipe> Recipes { get { EnsureRecipes(); return recipes; } }
@@ -161,7 +165,7 @@ public abstract class EquipmentProductionBuilding : RecipeBuilding
         deliveries.Add(owner, new Delivery { type = type, amount = amount }); return true;
     }
     public override void CancelDelivery(Object owner) { deliveries.Remove(owner); }
-    private int Reserved(ResourceType type)
+    protected int Reserved(ResourceType type)
     {
         int amount = 0; var expired = new List<Object>();
         foreach (var item in deliveries)
@@ -178,12 +182,21 @@ public abstract class EquipmentProductionBuilding : RecipeBuilding
             Mathf.Max(0, inputCapacity - GetInputAmount(delivery.type) - Reserved(delivery.type))));
         cargo.RemoveStoredAmount(delivery.type, amount); Add(inputStock, delivery.type, amount); return amount;
     }
-    public override int Collect(GettingResources cargo, int capacity)
+    public override int CollectableOutput(WarehouseStorage destination)
+    {
+        int amount = 0;
+        foreach (var item in outputStock)
+            if (destination == null || destination.Accepts(item.type)) amount += item.amount;
+        return amount;
+    }
+
+    public override int Collect(GettingResources cargo, int capacity, WarehouseStorage destination = null)
     {
         if (cargo == null) return 0;
         int taken = 0;
         foreach (var item in outputStock)
         {
+            if (destination != null && !destination.Accepts(item.type)) continue;
             int amount = Mathf.Min(item.amount, Mathf.Max(0, capacity - taken));
             item.amount -= amount; cargo.AddStoredAmount(item.type, amount); taken += amount;
         }
@@ -207,6 +220,13 @@ public abstract class EquipmentProductionBuilding : RecipeBuilding
         if (!CanProduce) progress = 0;
     }
     protected override void OnDisable() { base.OnDisable(); deliveries.Clear(); }
+    protected bool TryConsumeInputs(IReadOnlyDictionary<ResourceType,int> required)
+    {
+        if(required==null)return false;
+        foreach(var item in required)if(item.Value<0||GetInputAmount(item.Key)<item.Value)return false;
+        foreach(var item in required)Add(inputStock,item.Key,-item.Value);
+        return true;
+    }
     private static Dictionary<ResourceType, int> Ingredients(Recipe recipe)
     {
         var result = new Dictionary<ResourceType, int>();

@@ -31,14 +31,18 @@ public class UnitFollowState : StateMachineBehaviour
     override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
         if(SaveGameManager.IsLoading)return;
-        if(animator.GetComponentInParent<Catapult>()!=null)return;
+        if(SiegeLadderAnimation.Controls(animator)||RamCrewMember.Controls(animator))return;
+        if(WorkerAnimation.Controls(animator))return;
+        if(animator.GetComponentInParent<Catapult>()!=null || animator.GetComponentInParent<BatteringRam>()!=null)return;
         if (UnitEat.ControlsMovement(animator)) return;
         if(Builder.ControlsAnimation(animator))return;
         if (MilitaryOrders.BlocksChase(animator)) return;
         if (BattleCombatant.BlocksActions(animator) || BattleCombatant.Defends(animator)) return;
         if (WallStation.Holding(animator)) return;
-        if (animator.GetComponentInParent<FoodCart>() != null || animator.GetComponentInParent<CartHorse>() != null) return;
+        if (animator.GetComponentInParent<FoodCart>() != null || animator.GetComponentInParent<SiegeLadderCart>() != null || animator.GetComponentInParent<CartHorse>() != null) return;
         if (resourcesMove != null && resourcesMove.IsTrainingRecruit) return;
+        if (ResourceWorker.OwnsTarget(resourcesMove, attackController != null ? attackController.targetToAttack : null))
+        { WorkerAnimation.Bool(animator, "isAttacking", false); return; }
         if (resourcesMove != null && (resourcesMove.IsFoodGatherer || resourcesMove.IsProductionWorker || resourcesMove.role == ResourcesMove.UnitRole.Miner || resourcesMove.role == ResourcesMove.UnitRole.Farmer || resourcesMove.role == ResourcesMove.UnitRole.Carrier)
             && !resourcesMove.IsReturningToWorkplace) return;
         // Проверка ручного приказа на перемещение игроком.
@@ -82,19 +86,10 @@ public class UnitFollowState : StateMachineBehaviour
                 stopDistance = archer.attackRange;
 
             // Проверяем, к какому объекту подошел юнит (Дерево/Враг, Водоем ИЛИ Жила камня)
-            bool isEnemyOrTree = FactionMember.AreEnemies(attackController.gameObject,attackController.targetToAttack.gameObject)
-                || FactionMember.IsResource(attackController.targetToAttack.gameObject);
-            bool isFishingSpot = attackController.targetToAttack.CompareTag("FishingSpot");
-
-            // Жила камня — рабочая цель ТОЛЬКО для каменщика.
-            // Носильщик с той же целью (жила) должен пройти ВНУТРЬ её триггера, чтобы забрать камень из кучи.
-            var resourcesMoveOnUnit = animator.GetComponent<ResourcesMove>();
-            bool isStoneQuarryMine = attackController.targetToAttack.CompareTag("StoneQuarry")
-                                     && resourcesMoveOnUnit != null
-                                     && resourcesMoveOnUnit.role == ResourcesMove.UnitRole.StoneMason;
+            bool isEnemyOrTree = FactionMember.AreEnemies(attackController.gameObject,attackController.targetToAttack.gameObject);
 
             // Если цель имеет один из нужных тегов и мы подошли на дистанцию взаимодействия
-            if ((isEnemyOrTree || isFishingSpot || isStoneQuarryMine) && distanceFromTarget <= stopDistance)
+            if (isEnemyOrTree && distanceFromTarget <= stopDistance)
             {
                 if (agent != null && agent.isOnNavMesh)
                 {

@@ -63,7 +63,7 @@ namespace UnityEngine.AI
         public static bool SamplePosition(Vector3 point,out NavMeshHit hit,float radius,NavMeshQueryFilter filter) { hit=new NavMeshHit { position=point }; return CanSample; }
     }
 }
-public class Unit { public void SetInitialHealthRatio(float value) { } }
+public class Unit { public float unitHealth,unitMaxHealth=300;public void Heal(float value){if(unitHealth>0)unitHealth=Math.Min(unitMaxHealth,unitHealth+value);} public void SetInitialHealthRatio(float value) { } }
 public class WildlifeAnimal { }
 public class EnemyAi { }
 public static class WallNavigation { public const int AreaMask=1<<30; }

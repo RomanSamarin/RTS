@@ -28,6 +28,7 @@ public class EnemyAi : MonoBehaviour
 
     private Unit self;
     private float nextScan, nextBuildingHit;
+    private float nextTownHallPathAt;
     private bool hasMove, hasAttack, hasBuilding;
     private readonly MeleeStrikeClock meleeClock=new MeleeStrikeClock();
     private Unit strikeTarget;
@@ -104,13 +105,28 @@ public class EnemyAi : MonoBehaviour
     {
         buildingTarget = null;
         float nearest = float.MaxValue;
+        float nearestHall = float.MaxValue;
+        BuildingHealth raidHall = null;
+        bool settlementRaid = GetComponent<BanditRaider>()?.Job == BanditRaider.Mission.Raid;
         int count = 0;
         foreach (var b in BuildingManager.AllBuildings)
         {
             if (!b || b.IsDead || !b.gameObject.activeInHierarchy || !FactionMember.AreEnemies(gameObject,b.gameObject)) continue;
+            if (settlementRaid && b.TryGetComponent<TownHall>(out _))
+            {
+                float distance = (b.transform.position - transform.position).sqrMagnitude;
+                if (distance < nearestHall && TryTownHallApproach(b, out _))
+                {
+                    raidHall = b;
+                    nearestHall = distance;
+                }
+                continue;
+            }
             if (randomBuilding) { count++; if (Random.Range(0, count) == 0) buildingTarget = b; }
             else { float d = (b.transform.position - transform.position).sqrMagnitude; if (d < nearest) { nearest = d; buildingTarget = b; } }
         }
+        if (raidHall != null) buildingTarget = raidHall;
+        nextTownHallPathAt = 0f;
     }
 
     private Unit FindUnit()
@@ -169,15 +185,55 @@ public class EnemyAi : MonoBehaviour
 
     private void FightBuilding()
     {
-        Vector3 point = BuildingPoint(buildingTarget);
+        var hall = buildingTarget.GetComponent<TownHall>();
+        var body = hall != null ? BuildingRoadAccess.SolidBody(hall.gameObject) : null;
+        Vector3 point = body != null ? body.ClosestPoint(transform.position) : BuildingPoint(buildingTarget);
         if (attack) attack.targetToAttack = buildingTarget.transform;
         if (Vector3.Distance(transform.position, point) > buildingRange)
-        { Move(point); Animate(true, false, false); return; }
+        {
+            if (hall == null) Move(point);
+            else if (Time.time >= nextTownHallPathAt || agent.isStopped)
+            {
+                nextTownHallPathAt = Time.time + 1f;
+                if (!TryTownHallApproach(buildingTarget, out var approach))
+                { buildingTarget = null; Idle(); return; }
+                agent.isStopped = false;
+                agent.SetDestination(approach);
+            }
+            Animate(true, false, false); return;
+        }
 
         Stop();
         Face(buildingTarget.transform.position);
         Animate(false, false, true);
         AttackBuildingTarget();
+    }
+
+    private bool TryTownHallApproach(BuildingHealth building, out Vector3 approach)
+    {
+        approach = default;
+        if (!agent || !agent.enabled || !agent.isOnNavMesh) return false;
+        var body = BuildingRoadAccess.SolidBody(building.gameObject);
+        if (body == null) return false;
+        Bounds bounds = body.bounds;
+        var filter = new NavMeshQueryFilter { agentTypeID = agent.agentTypeID, areaMask = agent.areaMask };
+        var path = new NavMeshPath();
+        float best = float.PositiveInfinity;
+        for (int i = 0; i < 8; i++)
+        {
+            Vector3 outward = Quaternion.Euler(0, i * 45f, 0) * Vector3.forward;
+            Vector3 probe = bounds.center + outward * (bounds.extents.magnitude + 2f);
+            probe = body.ClosestPoint(probe) + outward * Mathf.Max(.75f, agent.radius + .25f);
+            probe.y = bounds.min.y;
+            if (!NavMesh.SamplePosition(probe, out var hit, 1.5f, filter) ||
+                Vector3.Distance(hit.position, body.ClosestPoint(hit.position)) > buildingRange ||
+                !agent.CalculatePath(hit.position, path) || path.status != NavMeshPathStatus.PathComplete) continue;
+            float length = (transform.position - hit.position).sqrMagnitude;
+            if (length >= best) continue;
+            best = length;
+            approach = hit.position;
+        }
+        return !float.IsPositiveInfinity(best);
     }
 
     /// <summary>Урон зданию с общим интервалом (вызывается и из EnemyAttackBuilding).</summary>

@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityEngine.EventSystems;
@@ -8,7 +9,7 @@ using UnityEngine.UI;
 /// <summary>Форма строя, которую строят юниты.</summary>
 public enum FormationShape
 {
-    /// <summary>Шеренга: все юниты в один ряд, плечом к плечу.</summary>
+    /// <summary>Шеренги: по одному ряду на тип войск.</summary>
     Line,
 
     /// <summary>Клин: 1 юнит в первом ряду, в каждом следующем на одного больше.</summary>
@@ -51,7 +52,7 @@ public class SoldiersFormation : MonoBehaviour
     [Tooltip("Расстояние между юнитами в шеренге и в рядах клина, м")]
     public float pointSpacing = 1.5f;
 
-    [Tooltip("Расстояние между рядами клина (глубина), м")]
+    [Tooltip("Расстояние между рядами строя (глубина), м")]
     public float rowSpacing = 1.5f;
 
     [Header("Форма строя")]
@@ -152,6 +153,9 @@ public class SoldiersFormation : MonoBehaviour
     private Vector3 localCenter;
     private Coroutine placementRoutine;
     private FormationShape builtShape;
+    private const int FormationRankCount = 5;
+    private readonly int[] selectedRankCounts = new int[FormationRankCount];
+    private readonly int[] builtRankCounts = new int[FormationRankCount];
     private bool pointsBuilt;
 
     // ------------------------------------------------------------------ Unity
@@ -185,7 +189,7 @@ public class SoldiersFormation : MonoBehaviour
 
     private void Update()
     {
-        if (Barracks.BlocksWorldInput || RoadBuilder.BlocksWorldInput) return;
+        if (SettingsMenu.BlocksWorldInput || Barracks.BlocksWorldInput || RoadBuilder.BlocksWorldInput) return;
         if (toggleKey != KeyCode.None && Input.GetKeyDown(toggleKey))
         {
             TogglePlacement();
@@ -212,7 +216,7 @@ public class SoldiersFormation : MonoBehaviour
         }
 
         SetPreviewVisible(true);
-        EnsurePointsFor(ManagerGO.Instance.unitsSelected.Count);
+        EnsurePointsFor(ManagerGO.Instance.unitsSelected);
         FollowCursor();
 
         if (placeOnLeftClick && Input.GetMouseButtonDown(0) && !IsPointerOverUI())
@@ -324,7 +328,7 @@ public class SoldiersFormation : MonoBehaviour
         if (!placing || !autoGeneratePoints || ManagerGO.Instance == null)
             return;
 
-        EnsurePointsFor(ManagerGO.Instance.unitsSelected.Count);
+        EnsurePointsFor(ManagerGO.Instance.unitsSelected);
     }
 
     /// <summary>Включить/выключить режим построения (можно вызывать из UI).</summary>
@@ -430,7 +434,7 @@ public class SoldiersFormation : MonoBehaviour
         if (!autoGeneratePoints || ManagerGO.Instance == null)
             return;
 
-        EnsurePointsFor(ManagerGO.Instance.unitsSelected.Count);
+        EnsurePointsFor(ManagerGO.Instance.unitsSelected);
     }
 
     /// <summary>
@@ -439,15 +443,26 @@ public class SoldiersFormation : MonoBehaviour
     /// Благодаря этому точек всегда столько же, сколько юнитов,
     /// и двоим не приходится идти в одну точку.
     /// </summary>
-    private void EnsurePointsFor(int count)
+    private void EnsurePointsFor(List<GameObject> units)
     {
-        if (!autoGeneratePoints || count <= 0 || formationRoot == null)
+        if (!autoGeneratePoints || units.Count == 0 || formationRoot == null)
             return;
 
-        if (pointsBuilt && generatedPoints.Count == count && points.Count == count &&
-            builtShape == currentShape)
+        System.Array.Clear(selectedRankCounts, 0, FormationRankCount);
+        int count = 0;
+        foreach (var unit in units)
+        {
+            if (unit == null) continue;
+            selectedRankCounts[FormationRank(unit)]++;
+            count++;
+        }
+        if (count == 0) return;
+
+        if (pointsBuilt && points.Count == count && builtShape == currentShape &&
+            builtRankCounts.SequenceEqual(selectedRankCounts))
             return;
 
+        System.Array.Copy(selectedRankCounts, builtRankCounts, FormationRankCount);
         BuildPoints(count);
         RefreshLocalCenter();
     }
@@ -456,9 +471,7 @@ public class SoldiersFormation : MonoBehaviour
     {
         ClearGeneratedPoints();
 
-        List<Vector3> layout = currentShape == FormationShape.Wedge
-            ? BuildWedgeLayout(count)
-            : BuildLineLayout(count);
+        List<Vector3> layout = BuildRankLayout(count);
 
         foreach (Vector3 localPosition in layout)
         {
@@ -490,56 +503,45 @@ public class SoldiersFormation : MonoBehaviour
         pointsBuilt = false;
     }
 
-    /// <summary>
-    /// Шеренга: все юниты в один ряд, лицом вперёд.
-    /// Ряд центрируется относительно formationRoot.
-    /// </summary>
-    private List<Vector3> BuildLineLayout(int count)
+    private static int FormationRank(GameObject unit)
     {
-        List<Vector3> layout = new List<Vector3>(count);
-
-        for (int i = 0; i < count; i++)
+        switch (BattleCombatant.TypeOf(unit))
         {
-            float x = (i - (count - 1) * 0.5f) * pointSpacing;
-
-            layout.Add(new Vector3(x, 0f, 0f));
+            case TroopType.Spearman: return 0;
+            case TroopType.Swordsman: return 1;
+            case TroopType.Archer: return 2;
+            case TroopType.Cavalry: return 3;
+            default: return 4;
         }
-
-        return layout;
     }
 
-    /// <summary>
-    /// Клин: в первом ряду 1 юнит, в каждом следующем на одного больше.
-    /// Острие смотрит вперёд, ряды расходятся назад,
-    /// последний ряд может быть неполным и центрируется.
-    /// </summary>
-    private List<Vector3> BuildWedgeLayout(int count)
+    private List<Vector3> BuildRankLayout(int count)
     {
-        List<Vector3> layout = new List<Vector3>(count);
-
-        // Сколько рядов нужно, чтобы треугольник 1+2+3+... вместил всех
-        int rows = 1;
-        while (rows * (rows + 1) / 2 < count)
-            rows++;
-
-        // Центр клина по глубине
-        float firstRowZ = -(rows - 1) * 0.5f * rowSpacing;
-
-        int placed = 0;
-
-        for (int row = 0; row < rows && placed < count; row++)
+        var rowSizes = new List<int>();
+        foreach (int rankCount in builtRankCounts)
         {
-            int inRow = Mathf.Min(row + 1, count - placed);
-            float xStart = -(inRow - 1) * 0.5f * pointSpacing;
-            float z = firstRowZ + row * rowSpacing;
-
-            for (int column = 0; column < inRow; column++)
+            int remaining = rankCount;
+            while (remaining > 0)
             {
-                layout.Add(new Vector3(xStart + column * pointSpacing, 0f, z));
-                placed++;
+                int width = currentShape == FormationShape.Wedge
+                    ? Mathf.Min(rowSizes.Count + 1, remaining)
+                    : remaining;
+                rowSizes.Add(width);
+                remaining -= width;
             }
         }
 
+        var layout = new List<Vector3>(count);
+        float spacing = Mathf.Max(.2f, Mathf.Max(pointSpacing, minDestinationSpacing));
+        float depth = Mathf.Max(.2f, Mathf.Max(rowSpacing, minDestinationSpacing));
+        for (int row = 0; row < rowSizes.Count; row++)
+        {
+            int width = rowSizes[row];
+            float xStart = -(width - 1) * .5f * spacing;
+            float z = ((rowSizes.Count - 1) * .5f - row) * depth;
+            for (int column = 0; column < width; column++)
+                layout.Add(new Vector3(xStart + column * spacing, 0f, z));
+        }
         return layout;
     }
 
@@ -794,6 +796,33 @@ public class SoldiersFormation : MonoBehaviour
     // ------------------------------------------------------------ распределение
 
     private List<UnitOrder> BuildOrders(List<GameObject> units, List<Vector3> destinations)
+    {
+        var ranks = new List<GameObject>[FormationRankCount];
+        foreach (var unit in units)
+        {
+            int rank = FormationRank(unit);
+            (ranks[rank] ??= new List<GameObject>()).Add(unit);
+        }
+
+        if (ranks.Count(rank => rank != null) == 1)
+            return MatchSlots(units, destinations);
+
+        Vector3 forward = formationRoot.forward;
+        Vector3 origin = formationRoot.position;
+        destinations.Sort((a, b) => Vector3.Dot(b - origin, forward).CompareTo(Vector3.Dot(a - origin, forward)));
+        var orders = new List<UnitOrder>(units.Count);
+        int offset = 0;
+        foreach (var rank in ranks)
+        {
+            if (rank == null) continue;
+            var slots = destinations.GetRange(offset, rank.Count);
+            orders.AddRange(MatchSlots(rank, slots));
+            offset += rank.Count;
+        }
+        return orders;
+    }
+
+    private List<UnitOrder> MatchSlots(List<GameObject> units, List<Vector3> destinations)
     {
         return reverseMatching
             ? BuildMirroredOrders(units, destinations)

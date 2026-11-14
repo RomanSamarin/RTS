@@ -49,6 +49,7 @@ public class Arrow : MonoBehaviour
         {
             var moving = aim.GetComponentInParent<NavMeshAgent>();
             if (moving != null && moving.enabled && moving.isOnNavMesh) velocity = moving.velocity;
+            else if (aim.GetComponentInParent<ShipNavigation>() is ShipNavigation ship) velocity = ship.TrafficVelocity;
         }
         destination = aimPoint;
         seconds = Mathf.Max(0.05f, minFlightTime);

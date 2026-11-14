@@ -10,7 +10,8 @@ public class UIManager : MonoBehaviour
 
     private void Start()
     {
-        buildButton.onClick.AddListener(() => Construct(0));
+        if (buildButton != null && placement != null)
+            buildButton.onClick.AddListener(() => Construct(0));
     }
 
     private void Construct(int id)

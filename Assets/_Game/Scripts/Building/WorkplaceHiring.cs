@@ -471,6 +471,9 @@ public class WorkplaceHiring : MonoBehaviour
             case ResourcesMove.UnitRole.Smoker: return "коптильщик";
             case ResourcesMove.UnitRole.Blacksmith: return "кузнец";
             case ResourcesMove.UnitRole.Craftsman: return "мастер";
+            case ResourcesMove.UnitRole.Shipwright: return "корабельщик";
+            case ResourcesMove.UnitRole.PortWorker: return "портовый рабочий";
+            case ResourcesMove.UnitRole.Watchman: return "дозорный";
             case ResourcesMove.UnitRole.Hunter: return "охотник";
             case ResourcesMove.UnitRole.BerryGatherer: return "сборщик ягод";
             default: return role.ToString();

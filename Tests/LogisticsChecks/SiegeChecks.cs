@@ -11,6 +11,18 @@ public static class CatapultFactory
     public static bool TrySpawn(GameObject prefab,GameObject workshop,Transform point)
     {if(!SpawnAllowed)return false;SpawnCount++;return true;}
 }
+public static class RamFactory
+{
+    public static bool SpawnAllowed;
+    public static int SpawnCount;
+    public static bool Valid(GameObject prefab) => true;
+    public static bool TrySpawn(GameObject prefab, GameObject workshop, Transform point)
+    {
+        if (!SpawnAllowed) return false;
+        SpawnCount++;
+        return true;
+    }
+}
 public static class SiegeChecks
 {
     private static void Check(bool value,string reason){if(!value)throw new Exception("Siege: "+reason);}
@@ -26,7 +38,7 @@ public static class SiegeChecks
         Check(SiegeRules.Splash(0,3)==1&&SiegeRules.Splash(3,3)==0&&SiegeRules.Splash(6,3)==0,"splash cannot damage beyond radius");
         Time.time=100;CatapultFactory.SpawnAllowed=false;CatapultFactory.SpawnCount=0;
         var shop=new Workshop();shop.SetRepeat(false);shop.QueueCatapult();
-        Check(shop.Recipes.Count==3&&shop.Recipes.Count==3&&shop.ActiveRecipe.producesUnit,"old bow/shield workshop receives one catapult recipe");
+        Check(shop.Recipes.Count==6&&shop.Recipes.Count==6&&shop.ActiveRecipe.producesUnit&&!shop.ActiveRecipe.producesLadderCart&&!shop.ActiveRecipe.producesRam,"workshop appends ram without replacing other siege recipes");
         shop.Work(100);Check(CatapultFactory.SpawnCount==0,"no machine without delivered resources");
         Deliver(shop,ResourceType.Wood,30);Deliver(shop,ResourceType.Iron,10);Deliver(shop,ResourceType.Stone,5);
         shop.Work(89);Check(CatapultFactory.SpawnCount==0&&shop.GetInputAmount(ResourceType.Wood)==30,"cannot consume materials before full build time");
@@ -40,6 +52,21 @@ public static class SiegeChecks
         CatapultFactory.SpawnAllowed=false;Time.time+=2;cancel.Work(90);
         Check(cancel.CancelOrder(cancel.GetQueueSnapshot()[0].orderId)&&cancel.WorkProgress==0&&cancel.GetInputAmount(ResourceType.Wood)==30,"cancel preserves unused materials after blocked assembly");
         CatapultFactory.SpawnAllowed=true;
+        var ramShop = new Workshop();
+        ramShop.SetRepeat(false);
+        ramShop.QueueRam();
+        Check(ramShop.ActiveRecipe.producesRam && ramShop.SiegeLadderRecipeIndex == 3, "ram does not shift existing recipe indices");
+        Deliver(ramShop, ResourceType.Wood, 25);
+        Deliver(ramShop, ResourceType.Iron, 6);
+        Time.time += 2;
+        ramShop.Work(60);
+        Check(ramShop.WaitingForRamExit && ramShop.GetInputAmount(ResourceType.Wood) == 25, "blocked ram exit preserves the order and stock");
+        RamFactory.SpawnAllowed = true;
+        Time.time += 2;
+        ramShop.Work(1);
+        ramShop.Work(100);
+        Check(RamFactory.SpawnCount == 1 && ramShop.QueueCount == 0 && ramShop.GetInputAmount(ResourceType.Iron) == 0,
+            "ram spawns once and consumes physically delivered materials");
         Console.WriteLine("PASS: catapult recipe migration, physical materials, finite queue, blocked exit, one spawn, cancellation and range/splash");
     }
 }

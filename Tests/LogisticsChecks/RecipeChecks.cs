@@ -54,5 +54,10 @@ public static class RecipeChecks
         Console.WriteLine("PASS: recipes, physical transfers, capacity, cancellation and competing reservations");
     }
 }
-public class ResourcesMove { public enum UnitRole { Miller, Baker, Hunter, BerryGatherer, Blacksmith, Craftsman, Villager, Horse, Smoker } }
-public class WorkplaceHiring { }
+public class ResourcesMove
+{
+    public enum UnitRole { Miller, Baker, Hunter, BerryGatherer, Blacksmith, Craftsman, Villager, Horse, Smoker, Shipwright, PortWorker, Carrier }
+    public bool isWorking;
+    public bool CanPerformWork = true;
+}
+public class WorkplaceHiring { public ResourcesMove.UnitRole profession; public int maxWorkers; }

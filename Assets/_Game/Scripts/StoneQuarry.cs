@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 // ЖИЛА КАМНЯ (объект добычи): каменщик копает её киркой
-// (каждый "удар" через UnitAttackState.TakeDamage = 1 секунда добычи).
+// (каждый рабочий тик ResourceWorker = 1 секунда добычи).
 // Нагрузка камня идёт сразу в рюкзак рабочего; сдать он его должен на
 // ВРЕМЕННЫЙ СКЛАД КАМНЯ (скрипт StoneHouse). Носильщик через камень уже не ходит.
 public class StoneQuarry : MonoBehaviour
@@ -26,7 +26,7 @@ public class StoneQuarry : MonoBehaviour
         // Общее "здоровье" жилы — это общее время в секундах, нужное на добычу всего камня
         stoneHealth = totalStoneCount * timeToMineOneStone;
     }
-    // Метод вызывается при каждом ударе киркой из UnitAttackState
+    // Совместимое имя API: вызывается рабочим таймером ResourceWorker, не Animator.
     public void TakeDamage(int damageToInflict, GameObject attacker)
     {
         // Если в породе ничего не осталось, добывать больше нечего

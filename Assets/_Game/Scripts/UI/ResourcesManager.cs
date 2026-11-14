@@ -24,6 +24,7 @@ namespace _Game.Scripts.UI
         [SerializeField, Min(0)] private int spear;
         [SerializeField, Min(0)] private int bow;
         [SerializeField, Min(0)] private int shield;
+        [SerializeField, Min(0)] private int siegeLadder;
 
         [Header("Верхняя панель — пять ресурсов")]
         public TMP_Text woodText;
@@ -85,6 +86,7 @@ namespace _Game.Scripts.UI
                 case ResourceType.Spear: return spear;
                 case ResourceType.Bow: return bow;
                 case ResourceType.Shield: return shield;
+                case ResourceType.SiegeLadder: return siegeLadder;
                 default: throw new ArgumentOutOfRangeException(nameof(type), type, null);
             }
         }
@@ -108,6 +110,7 @@ namespace _Game.Scripts.UI
                 case ResourceType.Spear: spear = amount; break;
                 case ResourceType.Bow: bow = amount; break;
                 case ResourceType.Shield: shield = amount; break;
+                case ResourceType.SiegeLadder: siegeLadder = amount; break;
                 default: throw new ArgumentOutOfRangeException(nameof(type), type, null);
             }
         }

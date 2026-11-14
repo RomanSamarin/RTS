@@ -106,7 +106,7 @@ public class RoadBuilder : MonoBehaviour
     }
     private void Update()
     {
-        if(SaveGameManager.IsLoading)return;
+        if(SaveGameManager.IsLoading || SettingsMenu.BlocksWorldInput)return;
         if(buildKey!=KeyCode.None&&Input.GetKeyDown(buildKey))
         {
             var selected=EventSystem.current!=null?EventSystem.current.currentSelectedGameObject:null;

@@ -155,17 +155,30 @@ public class TrainingEquipmentStore : RecipeBuilding
         cargo.RemoveStoredAmount(job.type, amount); stock[job.type] = LocalAmount(job.type) + amount;
         TrimClaims(); return amount;
     }
-    public override int Collect(GettingResources cargo, int capacity)
+    public override int CollectableOutput(WarehouseStorage destination)
+    {
+        int amount = 0;
+        foreach (var item in returned)
+            if (destination == null || destination.Accepts(item.Key)) amount += item.Value;
+        foreach (var item in stock)
+            if (destination == null || destination.Accepts(item.Key))
+                amount += Mathf.Max(0, item.Value - RequiredAmount(item.Key));
+        return amount;
+    }
+
+    public override int Collect(GettingResources cargo, int capacity, WarehouseStorage destination = null)
     {
         if (cargo == null) return 0;
         int taken = 0;
         foreach (var type in new List<ResourceType>(returned.Keys))
         {
+            if (destination != null && !destination.Accepts(type)) continue;
             int amount = Mathf.Min(Mathf.Max(0, capacity - taken), returned[type]);
             returned[type] -= amount; cargo.AddStoredAmount(type, amount); taken += amount;
         }
         foreach (var type in new List<ResourceType>(stock.Keys))
         {
+            if (destination != null && !destination.Accepts(type)) continue;
             int amount = Mathf.Min(Mathf.Max(0, capacity - taken), Mathf.Max(0, LocalAmount(type) - RequiredAmount(type)));
             stock[type] -= amount; cargo.AddStoredAmount(type, amount); taken += amount;
         }

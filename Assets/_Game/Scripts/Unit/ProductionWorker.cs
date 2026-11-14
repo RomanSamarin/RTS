@@ -9,6 +9,7 @@ public class ProductionWorker : MonoBehaviour
     private bool working;
     public bool IsWorking => working && isActiveAndEnabled && worker != null && worker.IsProductionWorker
         && !UnitEat.ControlsMovement(this);
+    public bool isWorking => IsWorking && worker.CanPerformWork;
     private ResourcesMove worker;
     private NavMeshAgent agent;
     private GOScript command;
@@ -25,10 +26,11 @@ public class ProductionWorker : MonoBehaviour
     {
         if(SaveGameManager.IsLoading)return;
         working = false;
+        if (BattleCombatant.BlocksActions(this)) { RestoreStoppingDistance(); return; }
         if (BuildingRoadAccess.PauseWorker(worker)) { RestoreStoppingDistance(); CurrentTask="Нет дороги к зданию"; return; }
         if (!worker.IsProductionWorker) { RestoreStoppingDistance(); return; }
         if (UnitEat.ControlsMovement(this)) { CurrentTask = "Перерыв на еду"; return; }
-        if (command != null && (command.isCommandToMove || command.CurrentOrder == MovementOrderState.Order.Combat))
+        if (command != null && command.HasPlayerOrder)
         { RestoreStoppingDistance(); CurrentTask = "Выполняет приказ"; return; }
         var home = worker.AssignedWorkplace;
         var building = home != null ? home.GetComponent<RecipeBuilding>() : null;
@@ -61,6 +63,8 @@ public class ProductionWorker : MonoBehaviour
         CurrentTask = worker.role == ResourcesMove.UnitRole.Miller ? "Перемалывает"
             : worker.role == ResourcesMove.UnitRole.Baker ? "Выпекает"
             : worker.role == ResourcesMove.UnitRole.Smoker ? "Готовит"
+            : worker.role == ResourcesMove.UnitRole.Shipwright ? "Строит корабль"
+            : worker.role == ResourcesMove.UnitRole.PortWorker ? (building is Port port&&port.IsRepairing?"Ремонтирует корабль":"Перемещает груз")
             : worker.role == ResourcesMove.UnitRole.Blacksmith ? "Куёт" : "Изготавливает";
         working = true;
         building.Work(Time.deltaTime);

@@ -96,6 +96,41 @@ public static class EquipmentProductionChecks
         Check(panelQueue.GetQueueSnapshot()[0].orderId == idBeforeSnapshot, "refresh does not change order IDs");
         panelQueue.ClearQueue(); panelQueue.QueueSword();
         Check(!panelQueue.CancelOrder(idBeforeSnapshot) && panelQueue.QueueCount == 1, "cleared row cannot cancel later order");
-        Console.WriteLine("PASS: equipment recipes, multi-input delivery, queue, stable UI cancellation, output types and capacity");
+        var ladders = new Workshop { outputCapacity = 1 };
+        ladders.SetRepeat(false);
+        Check(ladders.Recipes.Count == 6 && ladders.SiegeLadderRecipeIndex == 3, "ladder index preserved after adding ram");
+        Check(ladders.Recipes.Count == 6, "recipe preparation does not duplicate siege equipment");
+        ladders.QueueSiegeLadder(); ladders.QueueSiegeLadder();
+        ladders.Work(100);
+        Check(ladders.StoredOutput == 0, "ladder requires physical wood delivery");
+        Deliver(ladders, ResourceType.Wood, 16);
+        ladders.Work(34);
+        Check(ladders.StoredOutput == 0 && ladders.GetInputAmount(ResourceType.Wood) == 16, "ladder work does not spend wood early");
+        ladders.Work(1); ladders.Work(100);
+        Check(ladders.GetOutputAmount(ResourceType.SiegeLadder) == 1 && ladders.QueueCount == 1
+            && ladders.GetInputAmount(ResourceType.Wood) == 8, "ladder costs eight wood, full output blocks second order");
+        var ladderCargo = new GettingResources();
+        Check(ladders.Collect(ladderCargo, 1) == 1 && ladderCargo.GetStoredAmount(ResourceType.SiegeLadder) == 1,
+            "carrier picks up real ladder from workshop");
+        var ladderWarehouse = new WarehouseStorage();
+        Check(ladderWarehouse.Deposit(ladderCargo) == 1 && ladderCargo.GetStoredAmount(ResourceType.SiegeLadder) == 0
+            && ladderWarehouse.GetStoredAmount(ResourceType.SiegeLadder) == 1, "ladder physically delivered to warehouse");
+        ladders.Work(10);
+        Check(ladders.CancelOrder(ladders.GetQueueSnapshot()[0].orderId) && ladders.GetInputAmount(ResourceType.Wood) == 8,
+            "cancel unfinished ladder preserves wood");
+
+        var oldWorkshop = new Workshop();
+        var oldRecipes = new System.Collections.Generic.List<EquipmentProductionBuilding.Recipe>
+        {
+            new EquipmentProductionBuilding.Recipe { title = "Custom bow", output = ResourceType.Bow, seconds = 42 },
+            new EquipmentProductionBuilding.Recipe { title = "Old catapult", producesUnit = true }
+        };
+        typeof(EquipmentProductionBuilding).GetField("recipes", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .SetValue(oldWorkshop, oldRecipes);
+        oldWorkshop.SetRepeat(false); oldWorkshop.QueueRecipe(0);
+        Check(oldWorkshop.SiegeLadderRecipeIndex == 2 && oldWorkshop.Recipes[0].seconds == 42
+            && oldWorkshop.GetQueueSnapshot()[0].recipe == oldRecipes[0], "existing workshop gains ladder without replacing custom recipes or queue indices");
+        Check(oldWorkshop.Recipes.Count == 5 && oldWorkshop.Recipes[4].producesRam, "existing workshop gains ram once at the end");
+        Console.WriteLine("PASS: equipment recipes, siege ladder production/delivery/cancellation, recipe migration, queue and capacity");
     }
 }

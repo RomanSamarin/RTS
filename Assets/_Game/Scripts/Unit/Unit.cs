@@ -8,6 +8,8 @@ public class Unit : MonoBehaviour
     public bool HasStarted { get; private set; }
     public float unitHealth;
     public float unitMaxHealth = 100f;
+    [Tooltip("Optional portrait for the selection card. Uses the default portrait by unit type if empty.")]
+    public Sprite selectionPortrait;
     private float initialHealthRatio = 1f;
     public void SetInitialHealthRatio(float ratio)
     { initialHealthRatio = Mathf.Clamp01(ratio); unitHealth = unitMaxHealth * initialHealthRatio; UpdateHealth(); }
@@ -26,6 +28,7 @@ public class Unit : MonoBehaviour
     // Кэш, чтобы не искать компоненты каждый кадр.
     private AttackController attackController;
     private bool hasFollowParameter;
+    [NonSerialized] private bool hasCatapultAnimation;
 
     private void Awake()
     {
@@ -35,7 +38,7 @@ public class Unit : MonoBehaviour
 
     void Update()
     {
-        if(SaveGameManager.IsLoading)return;
+        if(SaveGameManager.IsLoading || hasCatapultAnimation)return;
         if (navMeshAgent == null || animator == null || !navMeshAgent.enabled || !navMeshAgent.isOnNavMesh)
             return;
 
@@ -88,6 +91,7 @@ public class Unit : MonoBehaviour
     /// </summary>
     private void CacheReferences()
     {
+        hasCatapultAnimation = GetComponent<Catapult>() != null || GetComponent<BatteringRam>() != null;
         if (animator == null)
             animator = GetComponent<Animator>();
         if (animator == null)
@@ -139,6 +143,7 @@ public class Unit : MonoBehaviour
     {
         if (deathHandled) return;
         deathHandled = true;
+        if (TrySinkShip()) return;
         var bandit = GetComponent<BanditRaider>();
         if (bandit != null) bandit.DropLoot();
         else if (killer != null&&!FactionMember.AreAllies(gameObject,killer))
@@ -167,7 +172,7 @@ public class Unit : MonoBehaviour
     internal void TakeDamage(int damageToInflict, GameObject attacker, CombatHitKind hit = CombatHitKind.Melee)
     {
         if (deathHandled) return;
-        if(attacker!=null&&HospitalPatient.Inside(gameObject))return;
+        if(attacker!=null&&(HospitalPatient.Inside(gameObject)||ShipCrewMember.Aboard(gameObject)||ShipPassenger.Aboard(gameObject)))return;
         if(attacker!=null&&FactionMember.AreAllies(attacker,gameObject))return;
         damageToInflict = TroopCombat.ResolveDamage(damageToInflict, attacker, this, hit);
         unitHealth -= damageToInflict;
@@ -188,7 +193,21 @@ public class Unit : MonoBehaviour
     // Оставили старый метод для совместимости
     public void Destroy()
     {
+        if (deathHandled) return;
+        if (GetComponent<ShipHull>() != null)
+        {
+            Destroy((GameObject)null);
+            return;
+        }
         UnityEngine.Object.Destroy(gameObject);
+    }
+    private bool TrySinkShip()
+    {
+        var ship = GetComponent<ShipHull>();
+        if (ship == null) return false;
+        SetInitialHealthRatio(0);
+        ship.BeginSinking();
+        return true;
     }
     private bool deathHandled;
     public void Heal(float amount)

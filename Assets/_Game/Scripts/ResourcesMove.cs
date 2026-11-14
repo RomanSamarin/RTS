@@ -11,17 +11,34 @@ public class ResourcesMove : MonoBehaviour
     // Builder добавлен в конец, чтобы не сдвинуть значения ролей,
     // уже сохранённые в префабах сцены.
     // Villager — безработный житель: ничего не добывает и может быть нанят в здание.
-    public enum UnitRole { Lumberjack, Carrier, Fisher, StoneMason, Builder, Villager, Miner, Farmer, Miller, Baker, Hunter, BerryGatherer, Blacksmith, Craftsman, Soldier, Transport, Horse, Smoker }
+    public enum UnitRole { Lumberjack, Carrier, Fisher, StoneMason, Builder, Villager, Miner, Farmer, Miller, Baker, Hunter, BerryGatherer, Blacksmith, Craftsman, Soldier, Transport, Horse, Smoker, Shipwright, PortWorker, Watchman }
     public bool IsTrainingRecruit => GetComponent<TrainingRecruit>() != null && GetComponent<TrainingRecruit>().IsReserved;
+    public bool IsShipCrew => (GetComponent<ShipCrewMember>()?.IsAssigned ?? false)||ShipPassenger.Controls(gameObject);
     public bool IsFoodGatherer => role == UnitRole.Hunter || role == UnitRole.BerryGatherer;
     public bool IsProductionWorker => role == UnitRole.Miller || role == UnitRole.Baker
-        || role == UnitRole.Blacksmith || role == UnitRole.Craftsman || role == UnitRole.Smoker;
+        || role == UnitRole.Blacksmith || role == UnitRole.Craftsman || role == UnitRole.Smoker || role == UnitRole.Shipwright || role == UnitRole.PortWorker;
 
     [Header("Настройки роли юнита")]
     [Tooltip("Профессия рабочего. Builder — строитель: сам находит стройплощадку, " +
              "подходит и достраивает здание (компонент Builder добавится автоматически). " +
              "Villager — безработный житель: ничего не добывает, его можно нанять в здание")]
     public UnitRole role; 
+    [field: SerializeField] public bool isWorking { get; private set; }
+    public bool CanPerformWork
+    {
+        get
+        {
+            if (!isActiveAndEnabled || IsTrainingRecruit || IsShipCrew || IsReturningToWorkplace || UnitEat.ControlsMovement(this)
+                || BattleCombatant.BlocksActions(this) || HospitalPatient.Inside(gameObject)) return false;
+            var unit = GetComponent<Unit>();
+            if (unit != null && unit.HasStarted && unit.unitMaxHealth > 0 && unit.unitHealth <= 0) return false;
+            var command = _goScript != null ? _goScript : GetComponent<GOScript>();
+            if (command != null && command.HasPlayerOrder) return false;
+            if (assignedWorkplace != null && !BuildingRoadAccess.Allows(assignedWorkplace)) return false;
+            var attack = attackController != null ? attackController : GetComponent<AttackController>();
+            return attack == null || attack.targetToAttack == null || !FactionMember.AreEnemies(gameObject, attack.targetToAttack.gameObject);
+        }
+    }
     public int MaxUnitResources = 10;
 
     [Header("Доставка ресурсов (подход к двери здания)")]
@@ -53,19 +70,20 @@ public class ResourcesMove : MonoBehaviour
     public UnitRole Role => role;
 
     /// <summary>Безработный житель — его можно нанять.</summary>
-    public bool IsUnemployed => role == UnitRole.Villager && !IsTrainingRecruit;
+    public bool IsUnemployed => role == UnitRole.Villager && !IsTrainingRecruit && !IsShipCrew;
 
     public bool CanChangeRole
     {
         get
         {
             GettingResources cargo = GetComponent<GettingResources>();
-            return !IsTrainingRecruit && (cargo == null || !cargo.HasCargo);
+            return !IsTrainingRecruit && !IsShipCrew && (cargo == null || !cargo.HasCargo);
         }
     }
 
     /// <summary>Здание, в которое нанят рабочий (может быть null).</summary>
     public GameObject AssignedWorkplace => assignedWorkplace;
+    public bool IsAtAssignedWorkplace => assignedWorkplace != null && IsAtDeliveryPoint(assignedWorkplace, stopNearBuildingDistance);
 
     /// <summary>
     /// Меняет профессию рабочего и (необязательно) привязывает его к зданию.
@@ -92,6 +110,8 @@ public class ResourcesMove : MonoBehaviour
             RemoveBuilder();
 
         role = newRole;
+        isWorking = false;
+        WorkerAnimation.Apply(_animator, false);
         if(newRole==UnitRole.Soldier)HospitalPatient.Ensure(gameObject);
         assignedWorkplace = workplace;
         if (newRole == UnitRole.Miner && workplace != null && workplace.GetComponent<MiningHouse>() == null)
@@ -106,6 +126,8 @@ public class ResourcesMove : MonoBehaviour
             workplace.AddComponent<Blacksmith>();
         if (newRole == UnitRole.Craftsman && workplace != null && workplace.GetComponent<Workshop>() == null)
             workplace.AddComponent<Workshop>();
+        if (newRole == UnitRole.Shipwright && workplace != null && workplace.GetComponent<Shipyard>() == null)
+            workplace.AddComponent<Shipyard>();
         returningToWorkplace = newRole != UnitRole.Villager && workplace != null;
 
         // Старые цели (дерево, склад, стройка) больше не актуальны.
@@ -160,9 +182,12 @@ public class ResourcesMove : MonoBehaviour
     void Update()
     {
         if(SaveGameManager.IsLoading)return;
+        if(IsShipCrew)return;
         if (UnitEat.ControlsMovement(this)) return;
         if (BuildingRoadAccess.PauseWorker(this)) return;
         if (IsTrainingRecruit || role == UnitRole.Soldier || role == UnitRole.Transport || role == UnitRole.Horse) return;
+        if (ResourceWorker.UsesRole(role) && GetComponent<ResourceWorker>() == null)
+            gameObject.AddComponent<ResourceWorker>();
         if (role == UnitRole.Carrier && GetComponent<CarrierTask>() == null)
             gameObject.AddComponent<CarrierTask>();
         if (role == UnitRole.Farmer && GetComponent<Farmer>() == null)
@@ -176,6 +201,13 @@ public class ResourcesMove : MonoBehaviour
         if (IsFoodGatherer && GetComponent<FoodGatheringWorker>() == null)
             gameObject.AddComponent<FoodGatheringWorker>();
         if (_goScript != null && _goScript.isCommandToMove) return;
+        if (role == UnitRole.Watchman)
+        {
+            if (_goScript != null && _goScript.HasPlayerOrder) return;
+            ReturnToWorkplace();
+            TryReturnToWorkplace();
+            return;
+        }
         // Сборщик ведёт подход к дому сам: использует доступную точку NavMesh.
         if (IsFoodGatherer || IsProductionWorker) return;
         if (TryReturnToWorkplace()) return;
@@ -261,6 +293,8 @@ public class ResourcesMove : MonoBehaviour
 
     public void SetInventoryFull()
     {
+        isWorking = false;
+        WorkerAnimation.Apply(_animator, false);
         hasResourcesInPocket = true;
         if (role == UnitRole.Lumberjack) GoToSawmill();
         if (role == UnitRole.Fisher) GoToFishHouse();
@@ -452,7 +486,7 @@ public class ResourcesMove : MonoBehaviour
         foreach (GameObject treeObj in trees)
         {
             Unit treeUnit = treeObj.GetComponent<Unit>();
-            if (treeUnit != null && treeUnit.unitHealth > 0)
+            if (treeUnit != null && treeUnit.unitHealth > 0 && treeUnit.woodReward > 0 && FactionMember.IsResource(treeObj))
             {
                 float distance = Vector3.Distance(transform.position, treeObj.transform.position);
                 if (distance < closestDistance)
@@ -887,5 +921,31 @@ public class ResourcesMove : MonoBehaviour
             _animator.SetBool("isAttacking", false);
         }
     }
+    private void LateUpdate()
+    {
+        if (SaveGameManager.IsLoading) return;
+        bool active = false;
+        if (CanPerformWork)
+        {
+            if (ResourceWorker.UsesRole(role)) active = GetComponent<ResourceWorker>()?.isWorking ?? false;
+            else if (role == UnitRole.Builder) active = GetComponent<Builder>()?.isWorking ?? false;
+            else if (role == UnitRole.Miner) active = GetComponent<Miner>()?.isWorking ?? false;
+            else if (role == UnitRole.Farmer) active = GetComponent<Farmer>()?.isWorking ?? false;
+            else if (role == UnitRole.Carrier) active = GetComponent<CarrierTask>()?.isWorking ?? false;
+            else if (IsProductionWorker) active = GetComponent<ProductionWorker>()?.isWorking ?? false;
+            else if (IsFoodGatherer) active = GetComponent<FoodGatheringWorker>()?.isWorking ?? false;
+        }
+        isWorking = active;
+        if (_animator == null) _animator = GetComponentInChildren<Animator>();
+        if (!active && CanPerformWork && attackController != null && ResourceWorker.OwnsTarget(this, attackController.targetToAttack))
+        {
+            bool moving = _agent != null && _agent.enabled && _agent.isOnNavMesh && !_agent.isStopped && _agent.hasPath
+                && !_agent.pathPending && _agent.remainingDistance > _agent.stoppingDistance;
+            WorkerAnimation.Bool(_animator, "IsFollowing", moving);
+        }
+        WorkerAnimation.Apply(_animator, active);
+    }
+    private void OnDisable()
+    { isWorking = false; WorkerAnimation.Apply(_animator, false); }
 }
 

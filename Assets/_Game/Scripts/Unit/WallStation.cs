@@ -13,11 +13,11 @@ public class WallStation : MonoBehaviour
     public static bool AllowsWalkway(GameObject unit)
     {
         var combat = unit.GetComponent<TroopCombat>();
-        return unit.GetComponent<FoodCart>() == null && unit.GetComponent<CartHorse>() == null&&unit.GetComponent<Catapult>()==null
-            && (combat == null || combat.troopType != TroopType.Cavalry);
+        return unit.GetComponent<FoodCart>() == null && unit.GetComponent<SiegeLadderCart>() == null && unit.GetComponent<CartHorse>() == null&&unit.GetComponent<Catapult>()==null
+            && unit.GetComponent<BatteringRam>() == null && (combat == null || combat.troopType != TroopType.Cavalry);
     }
     public static bool CanUse(GameObject unit) => AllowsWalkway(unit)
-        && unit.GetComponent<Unit>() != null && unit.GetComponent<Unit>().unitHealth > 0;
+        && !RamCrewMember.Assigned(unit) && unit.GetComponent<Unit>() != null && unit.GetComponent<Unit>().unitHealth > 0;
     public bool Assign(WallWalkway target, Vector3 clicked)
     {
         if(target==null||!FactionMember.CanUse(gameObject,target.gameObject))return false;

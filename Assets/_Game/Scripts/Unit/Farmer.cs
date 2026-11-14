@@ -13,7 +13,7 @@ public class Farmer : MonoBehaviour
     private GettingResources cargo;
     private GOScript command;
     private AttackController attack;
-    private Animator animator;
+    [field: SerializeField] public bool isWorking { get; private set; }
     private FarmField field;
     private bool delivering;
     public string CurrentTask => delivering ? "Доставить" : field != null ? "Собирать урожай" : "Искать работу";
@@ -26,16 +26,18 @@ public class Farmer : MonoBehaviour
         cargo = GetComponent<GettingResources>();
         command = GetComponent<GOScript>();
         attack = GetComponent<AttackController>();
-        animator = GetComponentInChildren<Animator>();
+
     }
 
     private void Update()
     {
         if(SaveGameManager.IsLoading)return;
+        SetWorking(false);
+        if (BattleCombatant.BlocksActions(this)) return;
         if (BuildingRoadAccess.PauseWorker(worker)) { SetWorking(false); return; }
         if (UnitEat.ControlsMovement(this)) { SetWorking(false); return; }
         if (worker.role != ResourcesMove.UnitRole.Farmer) return;
-        if (worker.IsReturningToWorkplace || (command != null && command.isCommandToMove))
+        if (worker.IsReturningToWorkplace || (command != null && command.HasPlayerOrder))
         { SetWorking(false); return; }
         if (!agent.enabled || !agent.isOnNavMesh) { SetWorking(false); return; }
         if (attack != null) attack.targetToAttack = null;
@@ -91,16 +93,6 @@ public class Farmer : MonoBehaviour
     }
 
     private void MoveTo(Vector3 point) { agent.isStopped = false; agent.SetDestination(point); }
-    private void SetWorking(bool working)
-    {
-        if (animator == null || animator.runtimeAnimatorController == null) return;
-        foreach (var parameter in animator.parameters)
-        {
-            if (parameter.name == "isAttacking" && parameter.type == AnimatorControllerParameterType.Bool)
-                animator.SetBool(parameter.name, working);
-            if (working && parameter.name == "ActionType" && parameter.type == AnimatorControllerParameterType.Int)
-                animator.SetInteger(parameter.name, 1);
-        }
-    }
+    private void SetWorking(bool value) { isWorking = value; }
     private void OnDisable() { SetWorking(false); }
 }

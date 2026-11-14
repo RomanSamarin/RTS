@@ -25,7 +25,6 @@ public class SaveGameManager : MonoBehaviour
     private SaveWorldSnapshot snapshot;
     private float nextAuto;
     private bool saving;
-    private SaveWorld pending;
     private bool sceneReady;
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetStatics(){Instance=null;IsLoading=false;}
@@ -49,7 +48,7 @@ public class SaveGameManager : MonoBehaviour
         if(mode!=LoadSceneMode.Single)return;
         sceneReady=false;
         if(catalog==null)catalog=Resources.Load<SaveAssetCatalog>("SaveAssetCatalog");
-        if(catalog!=null)snapshot=new SaveWorldSnapshot(scene,catalog);
+        snapshot=catalog!=null?new SaveWorldSnapshot(scene,catalog):null;
         nextAuto=Time.realtimeSinceStartup+Mathf.Max(30,autoSaveSeconds);
         StartCoroutine(MarkReady());
     }
@@ -57,7 +56,7 @@ public class SaveGameManager : MonoBehaviour
     private bool Gameplay=>UnityEngine.Object.FindObjectOfType<UnitManager>()!=null||UnityEngine.Object.FindObjectOfType<ManagerGO>()!=null;
     private void Update()
     {
-        if(IsLoading||saving||!sceneReady||!Gameplay)return;
+        if(IsLoading||saving||!sceneReady||PauseMenu.BlocksWorldInput||!Gameplay)return;
         var focused=UnityEngine.EventSystems.EventSystem.current?.currentSelectedGameObject;
         bool typing=focused!=null&&((focused.GetComponentInParent<TMPro.TMP_InputField>()?.isFocused??false)||(focused.GetComponentInParent<UnityEngine.UI.InputField>()?.isFocused??false));
         if(!typing&&Input.GetKeyDown(saveKey))SaveGame();
@@ -68,27 +67,30 @@ public class SaveGameManager : MonoBehaviour
     {Status=message;StatusChanged?.Invoke(message);if(error)Debug.LogWarning("[Сохранения] "+message);else Debug.Log("[Сохранения] "+message);}
     private string PathFor(string slot)=>Path.Combine(SaveDirectory,slot+".json");
     public void SaveGame()=>WriteSlot("quicksave");
+    internal bool TrySaveBeforeExit(float resumeTimeScale) => WriteSlot("quicksave", resumeTimeScale);
     public void AutoSave()
     {
         nextAuto=Time.realtimeSinceStartup+Mathf.Max(30,autoSaveSeconds);
         string slot=Enumerable.Range(0,3).Select(i=>"autosave"+i).OrderBy(s=>File.Exists(PathFor(s))?File.GetLastWriteTimeUtc(PathFor(s)):DateTime.MinValue).First();
         WriteSlot(slot);
     }
-    private void WriteSlot(string slot)
+    private bool WriteSlot(string slot, float? resumeTimeScale = null)
     {
-        if(IsLoading||saving||!sceneReady||!Gameplay)return;
+        if(IsLoading||saving||!sceneReady||!Gameplay)return false;
         saving=true;
         try
         {
             if(snapshot==null||catalog==null)throw new InvalidOperationException("Нет каталога ассетов. Выполните Tools / RTS / Rebuild Save Catalog в Unity.");
             var world=snapshot.Capture();snapshot.Validate(world);
+            world.timeScale = PlaySpeed(resumeTimeScale ?? world.timeScale);
             world.values=SaveStateGraph.Pack(AllFields(world));
             string payload=JsonUtility.ToJson(world);
             var envelope=new SaveEnvelope{payload=payload,checksum=SaveFileStore.Digest(payload)};
             SaveFileStore.Write(PathFor(slot),JsonUtility.ToJson(envelope));
             Report(slot.StartsWith("auto")?"Автосохранение завершено":"Игра сохранена");
+            return true;
         }
-        catch(Exception ex){Report("Сохранение не выполнено: "+ex.Message,true);}
+        catch(Exception ex){Report("Сохранение не выполнено: "+ex.Message,true);return false;}
         finally{saving=false;}
     }
     private SaveWorld ReadFile(string path)
@@ -102,55 +104,114 @@ public class SaveGameManager : MonoBehaviour
         if(catalog==null)throw new InvalidOperationException("Нет каталога ассетов");
         (snapshot??new SaveWorldSnapshot(SceneManager.GetActiveScene(),catalog)).Validate(world);return world;
     }
-    public void LoadGame()=>RequestLoad("quicksave");
+    public void LoadGame()
+    {
+        string path=PathFor("quicksave");
+        LoadFirstAvailable(new[]{path,path+".bak"},"Быстрое сохранение ещё не создано");
+    }
+
+    public bool HasSave(bool includeQuickSave) =>
+        SaveFileStore.FindLoadCandidates(SaveDirectory, includeQuickSave).Length > 0;
+
+    public void ContinueLatest() => LoadFirstAvailable(
+        SaveFileStore.FindLoadCandidates(SaveDirectory, true), "Сохранений пока нет");
+
+    public void LoadFromMenu()
+    {
+        string quick = PathFor("quicksave");
+        LoadFirstAvailable(new[] { quick, quick + ".bak" }
+            .Concat(SaveFileStore.FindLoadCandidates(SaveDirectory, false)).ToArray(), "Сохранений пока нет");
+    }
+
+    public void LoadLatestAutoSave() => LoadFirstAvailable(
+        SaveFileStore.FindLoadCandidates(SaveDirectory, false), "Автосохранений пока нет");
+
     private static System.Collections.Generic.IEnumerable<System.Collections.Generic.List<SaveField>> AllFields(SaveWorld world)
     {
         foreach(var entity in world.entities)foreach(var component in entity.components)yield return component.fields;
         foreach(var component in world.controllers)yield return component.fields;
     }
-    public void LoadLatestAutoSave()
+    private void LoadFirstAvailable(string[] paths, string emptyMessage)
     {
-        var slots=Enumerable.Range(0,3).Select(i=>"autosave"+i).Where(s=>File.Exists(PathFor(s))).OrderByDescending(s=>File.GetLastWriteTimeUtc(PathFor(s))).ToArray();
-        foreach(string slot in slots)if(RequestLoad(slot))return;
-        if(slots.Length==0)Report("Автосохранений пока нет",true);
+        if (IsLoading || saving) return;
+        IsLoading = true;
+        StartCoroutine(LoadRoutine(paths, emptyMessage));
     }
-    private bool RequestLoad(string slot)
+
+    private static float PlaySpeed(float savedSpeed)
+        => savedSpeed > 0 && !float.IsInfinity(savedSpeed) ? savedSpeed : 1f;
+
+    private IEnumerator LoadRoutine(string[] paths, string emptyMessage)
     {
-        if(IsLoading||saving)return false;
-        string path=PathFor(slot);
-        try
-        {
-            if(!File.Exists(path))throw new FileNotFoundException("Сохранение не найдено");
-            try{pending=ReadFile(path);}
-            catch(Exception primary)
-            {
-                if(!File.Exists(path+".bak"))throw;
-                pending=ReadFile(path+".bak");Debug.LogWarning("[Сохранения] Основной файл недоступен, используется резервная копия: "+primary.Message);
-            }
-            IsLoading=true;StartCoroutine(LoadRoutine());return true;
-        }
-        catch(Exception ex){Report("Загрузка не начата: "+ex.Message,true);return false;}
-    }
-    private IEnumerator LoadRoutine()
-    {
-        Time.timeScale=0;
+        float previousTimeScale = Time.timeScale;
+        bool sceneOpened = false;
+        bool found = false;
         Report("Загрузка мира…");
-        var world=pending;pending=null;
-        AsyncOperation operation;
-        try{operation=SceneManager.LoadSceneAsync(world.scene,LoadSceneMode.Single);}
-        catch(Exception ex){IsLoading=false;Report("Не удалось открыть сцену: "+ex.Message,true);yield break;}
-        while(!operation.isDone)yield return null;
-        // Start сценических объектов должен закончиться до перезаписи ресурсов/здоровья.
-        yield return null;
-        Exception error=null;
-        try{snapshot.CreateEntities(world);}catch(Exception ex){error=ex;}
-        // Динамические префабы также получают Start до восстановления снимка.
-        yield return null;
-        if(error==null)try{snapshot.Restore(world);}catch(Exception ex){error=ex;}
-        IsLoading=false;
-        Time.timeScale=error==null?Mathf.Max(0,world.timeScale):0;
-        nextAuto=Time.realtimeSinceStartup+Mathf.Max(30,autoSaveSeconds);
-        if(error!=null)Report("Не удалось восстановить мир; игра оставлена на паузе: "+error.Message,true);
-        else Report("Игра загружена");
+        foreach (string path in paths)
+        {
+            if (!File.Exists(path)) continue;
+            found = true;
+            SaveWorld world;
+            try
+            {
+                world = ReadFile(path);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[Сохранения] " + Path.GetFileName(path) + " — " + ex);
+                continue;
+            }
+
+            Time.timeScale = 0;
+            AsyncOperation operation;
+            try
+            {
+                operation = SceneManager.LoadSceneAsync(world.scene, LoadSceneMode.Single);
+                if (operation == null) throw new InvalidOperationException("Сцена недоступна");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning("[Сохранения] " + Path.GetFileName(path) + " — " + ex);
+                continue;
+            }
+            while (!operation.isDone) yield return null;
+            sceneOpened = true;
+
+            // Объекты сцены и созданные префабы получают Start перед восстановлением связей.
+            yield return null;
+            Exception error = null;
+            try { snapshot.CreateEntities(world); }
+            catch (Exception ex) { error = ex; }
+            yield return null;
+            if (error == null)
+            {
+                try { snapshot.Restore(world); }
+                catch (Exception ex) { error = ex; }
+            }
+            if (error != null)
+            {
+                Debug.LogWarning("[Сохранения] " + Path.GetFileName(path) + " — " + error);
+                continue;
+            }
+
+            IsLoading = false;
+            Time.timeScale = PlaySpeed(world.timeScale);
+            nextAuto = Time.realtimeSinceStartup + Mathf.Max(30, autoSaveSeconds);
+            Report("Игра загружена");
+            yield break;
+        }
+
+        if (sceneOpened)
+        {
+            const string menu = "Assets/Scenes/LordsMenu.unity";
+            if (Application.CanStreamedLevelBeLoaded(menu))
+            {
+                var recovery = SceneManager.LoadSceneAsync(menu, LoadSceneMode.Single);
+                while (recovery != null && !recovery.isDone) yield return null;
+            }
+        }
+        IsLoading = false;
+        Time.timeScale = sceneOpened ? 1f : previousTimeScale;
+        Report(found ? "Не удалось восстановить сохранение" : emptyMessage, found);
     }
 }

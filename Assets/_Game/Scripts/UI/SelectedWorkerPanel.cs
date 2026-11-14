@@ -40,7 +40,7 @@ namespace _Game.Scripts.UI
             ResourceType.Fish => "Сырая рыба", ResourceType.Meat => "Сырое мясо",
             ResourceType.Berries => "Ягоды", ResourceType.Sword => "Мечи",
             ResourceType.Spear => "Копья", ResourceType.Bow => "Луки",
-            ResourceType.Shield => "Щиты", _ => type.ToString()
+            ResourceType.Shield => "Щиты", ResourceType.SiegeLadder => "Осадные лестницы", _ => type.ToString()
         };
         private void Update()
         {
@@ -61,8 +61,13 @@ namespace _Game.Scripts.UI
             string task = "Ожидает работу";
             var patient=worker.GetComponent<HospitalPatient>();
             var catapult=worker.GetComponent<Catapult>();
-            if(command!=null&&command.IsRetreating)task="Отступает";
+            var ram = worker.GetComponent<BatteringRam>();
+            if(worker.GetComponent<ShipPassenger>()?.IsAssigned??false)task=worker.GetComponent<ShipPassenger>().Status;
+            else if(worker.IsShipCrew)task=worker.GetComponent<ShipCrewMember>()?.Status??"На борту";
+            else if(command!=null&&command.IsRetreating)task="Отступает";
             else if(catapult!=null)task=catapult.Status;
+            else if(ram!=null)task=ram.Status;
+            else if(worker.GetComponent<RamCrewMember>() is RamCrewMember crew && crew.IsAssigned)task=crew.Status;
             else if(patient!=null&&patient.IsBusy)task=patient.Status;
             else if (eating != null && eating.IsBusy) task = eating.CurrentTask;
             else if(ArmyRejoin.Returning(worker.gameObject))task=worker.GetComponent<ArmyRejoin>().Status;
@@ -71,6 +76,8 @@ namespace _Game.Scripts.UI
             else if(worker.AssignedWorkplace!=null&&!BuildingRoadAccess.Allows(worker.AssignedWorkplace))task="Нет дороги к зданию";
             else if (worker.IsTrainingRecruit) task = worker.GetComponent<TrainingRecruit>().CurrentTask;
             else if (worker.IsReturningToWorkplace) task = "Идёт к месту работы";
+            else if (worker.role == ResourcesMove.UnitRole.Watchman)
+                task = worker.IsAtAssignedWorkplace ? "Ведёт дозор" : "Идёт на пост";
             else if (worker.role == ResourcesMove.UnitRole.Carrier) task = worker.GetComponent<CarrierTask>()?.Status ?? task;
             else if (worker.role == ResourcesMove.UnitRole.Farmer) task = worker.GetComponent<Farmer>()?.CurrentTask ?? task;
             else if (worker.role == ResourcesMove.UnitRole.Miner) task = worker.GetComponent<Miner>()?.CurrentTask ?? task;
