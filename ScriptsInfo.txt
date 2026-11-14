@@ -1,0 +1,56 @@
+Для твоего проекта удобнее брать **готовые префабы**. Если меняешь внешний вид здания или юнита, замени дочернюю модель и сохрани корень с компонентами. Ниже список для случаев, когда собираешь объект с нуля.
+
+## Здания
+
+На корне обычного здания нужны **`BuildingHealth`** и коллайдер. `UiSelectBuilding` добавляй для выбора кликом и открытия своей панели. Для рабочих зданий настрой вход через `BuildingEntrance` и дорогу через дочерний `SnapPoint`. `BuildingHealth` сам добавляет `BuildingRoadAccess` подходящим зданиям игрока.
+
+| Объект | Основные скрипты |
+|---|---|
+| Ратуша | `TownHall`. Готовый префаб уже стоит в `LordsGame`. |
+| Жилой дом | `HousesScript`. |
+| Склад | `WarehouseStorage` + `WorkplaceHiring`, профессия `Carrier`. Тег `Warehouse`. |
+| Амбар | Та же связка, у `WarehouseStorage` включён `Food Only`. |
+| Строительная артель | `WorkplaceHiring`, профессия `Builder`. |
+| Лесопилка / дом лесоруба | `Sawmill` + `WorkplaceHiring`, профессия `Lumberjack`. |
+| Дом каменщика | `StoneHouse` + `WorkplaceHiring`, профессия `StoneMason`. |
+| Дом шахтёра | `MiningHouse` + `WorkplaceHiring`, профессия `Miner`. |
+| Дом фермера | `FarmHouse` + `WorkplaceHiring`, профессия `Farmer`. |
+| Рыболовная хижина | `Fishing` + `WorkplaceHiring`, профессия `Fisher`. |
+| Охотничья хижина | `HunterHouse` + `WorkplaceHiring`, профессия `Hunter`. |
+| Пункт сбора ягод | `BerryGathererHouse` + `WorkplaceHiring`, профессия `BerryGatherer`. |
+| Мельница, пекарня, коптильня | `Mill`, `Bakery` или `Smokehouse` + `WorkplaceHiring` с соответствующей профессией. |
+| Кузница и мастерская | `Blacksmith` или `Workshop` + `WorkplaceHiring`. |
+| Казарма и стрельбище | `Barracks`. В `Unit Types` назначь префабы бойцов и их типы. Для стрельбища выбери `Archer`. |
+| Конюшня | `Stable`, с назначенным префабом лошади и точкой выхода. |
+| Таверна | `Tavern`, с точкой выдачи `Serving Point`. |
+| Больница | `Hospital`, с точкой входа и выхода. |
+| Торговый двор | `TradeYard`. |
+| Сторожевая башня | `Watchtower` + `WorkplaceHiring`, профессия `Watchman`. |
+| Порт | `Port` + `ShipSupplyDock` + `WorkplaceHiring`. Настрой сухопутный вход и точку швартовки. |
+| Верфь | `Shipyard` + `WorkplaceHiring`. Настрой место спуска через `ShipLaunchArea`. |
+| Стены, башни стен, ворота | `WallSegment`, `WallTower` или `WallGate` соответственно. Для прохода и позиций защитников используй настройку существующих префабов. |
+
+### Юниты и транспорт
+
+- **Житель и рабочий.** На корне используй `Unit`, `ResourcesMove`, `GettingResources`, `GOScript`, `AttackController`, `NavMeshAgent` и `UnitAdd` для учёта населения. `UnitEat` отвечает за голод и питание. Модель содержит `Animator`.
+- **Профессии.** При назначении роли код сам подключает `CarrierTask`, `Builder`, `Farmer`, `Miner`, `ResourceWorker`, `FoodGatheringWorker` или `ProductionWorker`. Для своей модели профессии назначь её префаб в **`WorkplaceHiring → Profession Models`**.
+- **Бойцы.** На префабе задай тип через `TroopCombat`. Лучнику нужен `Archer`. Щит копейщика назначается в **`Troop Combat → Spear Shield Visual`**. `BattleCombatant` и `MilitaryOrders` подключаются кодом.
+- **Лошадь и повозки.** Лошадь — `CartHorse`, повозка с едой — `FoodCart`, повозка для лестниц — `SiegeLadderCart`. Для снабжения в походе назначь бойцов и повозку одной `ArmyGroup`.
+- **Осадные машины.** `Catapult` на катапульту, `BatteringRam` на таран. У тарана укажи две точки расчёта. `RamCrewMember` добавляется бойцам при назначении.
+- **Корабли.** Начни с префаба нужного типа. Общие компоненты — `ShipHull` и `ShipNavigation`, а `ShipCargo`, `ShipTransport` и `ShipCombat` отвечают за груз, перевозку бойцов и бой соответственно.
+
+### Ресурсы и разбойники
+
+| Объект | Что поставить |
+|---|---|
+| Поле | `FarmField` и доступная `Work Point`. |
+| Камень, железо, золото | `StoneQuarry`, `IronVein` или `GoldVein` соответственно. |
+| Рыба, ягоды, животные | `FishingSpot`, `BerryBush` или `WildlifeAnimal` соответственно. |
+| Дерево | Возьми существующий `tree 1.prefab` с настроенной добычей и анимацией падения. |
+| Лагерь | `BanditCamp` и коллайдер. Назначь `Spawn Point` снаружи лагеря на NavMesh. |
+| Разбойник | `EnemyAi`, `Unit`, `AttackController` и `NavMeshAgent`. Префаб назначается лагерю или `RaidManager`. |
+| Засада | `BanditAmbushPoint` на отдельной точке возле дороги, со ссылкой на лагерь. |
+
+**На сцену** ставятся общие компоненты, по одному на систему: `UnitManager`, `ManagerGO`, `BuildingManager`, `BuildingSelectionManager`, `ResourcesManager`, `RaidManager`, `RoadBuilder` и система строительства с `PlacementSystem`, `InputManager`, `ObjectPlacer` и `PreviewSystem`. `SaveGameManager` создаётся при запуске.
+
+Для ближайшей проверки в `LordsGame` начни с **`BanditCamp` → префаб разбойника → `Spawn Point` → путь до ратуши**. Это единственная часть из списка, которая нужна, чтобы уже существующая система набегов получила источник отрядов. [Настройка лагерей и засад](C:/UnityProject/RTS/Documentation/Bandit_Camps_Setup.md)
