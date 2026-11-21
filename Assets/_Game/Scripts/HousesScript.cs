@@ -32,7 +32,6 @@ public class HousesScript : MonoBehaviour
 
     // Добавляем лимит ровно один раз и запоминаем это,
     // чтобы при уничтожении дома снять ровно столько же.
-    private bool housingRegistered;
 
     private float nextCleanupTime;
 
@@ -63,16 +62,10 @@ public class HousesScript : MonoBehaviour
     {
         if (!allHouses.Contains(this))
             allHouses.Add(this);
+        RefreshLocalHousing();
     }
 
-    void Start()
-    {
-        if (UnitManager.Instance == null) return;
-        if(!FactionMember.IsPlayer(gameObject))return;
-
-        UnitManager.Instance.UnitMax += UnitHouse;
-        housingRegistered = true;
-    }
+    void Start() => RefreshLocalHousing();
 
     void Update()
     {
@@ -93,14 +86,19 @@ public class HousesScript : MonoBehaviour
         }
     }
 
-    void OnDestroy()
+    void OnDisable()
     {
         allHouses.Remove(this);
+        RefreshLocalHousing();
+    }
 
-        if (!housingRegistered) return;
+    internal static void RefreshLocalHousing()
+    {
         if (UnitManager.Instance == null) return;
-
-        UnitManager.Instance.UnitMax -= UnitHouse;
+        int capacity = 0;
+        foreach (var house in allHouses)
+            if (house != null && FactionMember.IsPlayer(house.gameObject)) capacity += house.MaxResidents;
+        UnitManager.Instance.UnitMax = capacity;
     }
 
     // ------------------------------------------------------------------ Автозаселение
@@ -117,7 +115,7 @@ public class HousesScript : MonoBehaviour
         if (IsSettled(unit))
             return false;
 
-        HousesScript house = FindHouseWithFreePlace(unit.transform.position);
+        HousesScript house = FindHouseWithFreePlace(unit.transform.position, FactionMember.Of(unit));
         if (house == null)
             return false;
 
@@ -151,18 +149,6 @@ public class HousesScript : MonoBehaviour
 
     private static void AutoSettlePlayerUnits()
     {
-        // Список выделения ManagerGO уже содержит только своих юнитов.
-        if (ManagerGO.Instance != null && ManagerGO.Instance.allUnitsList != null)
-        {
-            List<GameObject> units = ManagerGO.Instance.allUnitsList;
-
-            for (int i = 0; i < units.Count; i++)
-                TrySettleAutomatically(units[i]);
-
-            return;
-        }
-
-        // Запасной вариант, если менеджера юнитов на сцене нет.
         Unit[] sceneUnits = FindObjectsOfType<Unit>();
         foreach (Unit unit in sceneUnits)
         {
@@ -176,6 +162,9 @@ public class HousesScript : MonoBehaviour
     /// Возвращает null, если подходящих домов нет.
     /// </summary>
     public static HousesScript FindHouseWithFreePlace(Vector3 position)
+        => FindHouseWithFreePlace(position, FactionMember.LocalPlayer);
+
+    public static HousesScript FindHouseWithFreePlace(Vector3 position, Faction owner)
     {
         HousesScript best = null;
         float bestDistance = Mathf.Infinity;
@@ -185,7 +174,7 @@ public class HousesScript : MonoBehaviour
             if (house == null || !house.isActiveAndEnabled)
                 continue;
 
-            if (!house.autoSettle || !house.HasFreePlace || !BuildingRoadAccess.Allows(house) || !FactionMember.IsPlayer(house.gameObject))
+            if (!house.autoSettle || !house.HasFreePlace || !BuildingRoadAccess.Allows(house) || FactionMember.Of(house.gameObject) != owner)
                 continue;
 
             float distance = (house.transform.position - position).sqrMagnitude;
@@ -206,7 +195,7 @@ public class HousesScript : MonoBehaviour
             return false;
         if (unit.GetComponent<FoodCart>() != null || unit.GetComponent<SiegeLadderCart>() != null || unit.GetComponent<CartHorse>() != null) return false;
 
-        return FactionMember.IsPlayer(unit);
+        return FactionMember.HasPlayerOwner(unit);
     }
 
     // ------------------------------------------------------------------ Жители

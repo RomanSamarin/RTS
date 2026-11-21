@@ -12,7 +12,11 @@ public class SquadMember : MonoBehaviour
     {
         var previous=Squad;Squad=null;if(previous!=null)previous.Remove(this);
         var agent=GetComponent<NavMeshAgent>();
-        if(command!=null&&agent!=null)agent.speed=command.NaturalSpeed;
+        if(agent!=null)
+        {
+            if(command!=null)agent.speed=command.NaturalSpeed;
+            else if(TryGetComponent<RtsNetworkUnit>(out var network))agent.speed=network.FormationSpeed;
+        }
     }
     private void OnDisable(){Leave();}
     private void OnDestroy(){if(command!=null)command.ManualOrderIssued-=Leave;}

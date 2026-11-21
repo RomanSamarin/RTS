@@ -144,7 +144,7 @@ public class ConstructionSite : MonoBehaviour
     /// Начать стройку: скрыть готовое здание и поставить на его место площадку.
     /// Возвращает null, если начать стройку невозможно.
     /// </summary>
-    public static ConstructionSite Begin(GameObject building, float buildTime, Vector2Int size, GameObject visualPrefab)
+    public static ConstructionSite Begin(GameObject building, float buildTime, Vector2Int size, GameObject visualPrefab, bool createVisual = true)
     {
         if (building == null)
             return null;
@@ -169,8 +169,11 @@ public class ConstructionSite : MonoBehaviour
         // Здание не должно работать и не должно быть видно до конца стройки.
         building.SetActive(false);
 
-        site.CreateVisual();
-        site.CreateSelectionCollider();
+        if (createVisual)
+        {
+            site.CreateVisual();
+            site.CreateSelectionCollider();
+        }
 
         return site;
     }
@@ -362,16 +365,9 @@ public class ConstructionSite : MonoBehaviour
 
     private void CreateVisual()
     {
-        if (visualPrefab != null)
-        {
-            // instantiateInWorldSpace = false: каркас встаёт ровно в точку площадки,
-            // а не в позицию, сохранённую в префабе.
-            Instantiate(visualPrefab, transform, false);
-        }
-        else
-        {
-            BuildDefaultVisual();
-        }
+        var visual = new GameObject("ConstructionStages");
+        visual.transform.SetParent(transform, false);
+        visual.AddComponent<ConstructionStageView>().Initialize(this, building, footprintCenter, footprintSize, barHeight - .8f, visualPrefab);
 
         // Пока здание выключено, его собственный NavMeshObstacle не работает.
         // Поэтому перекрываем поверхность самой площадкой.

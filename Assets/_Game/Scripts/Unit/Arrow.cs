@@ -185,7 +185,9 @@ public class Arrow : MonoBehaviour
             if (hitEffect != null) Instantiate(hitEffect, transform.position, Quaternion.identity);
         }
         if (debugLog) Debug.Log($"[Arrow] {(collision != null ? "попадание: " + collision.name : "промах")}", this);
-        Destroy(gameObject);
+        if (TryGetComponent<Unity.Netcode.NetworkObject>(out var network) && network.IsSpawned)
+            network.Despawn();
+        else Destroy(gameObject);
     }
     private void OnDrawGizmosSelected()
     { Gizmos.color = Color.yellow; Gizmos.DrawWireSphere(transform.position, CollisionRadius); }

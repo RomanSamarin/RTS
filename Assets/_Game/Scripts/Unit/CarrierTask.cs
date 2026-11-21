@@ -45,6 +45,7 @@ public class CarrierTask : MonoBehaviour
     private ResourceType productionInput;
     private GettingResources cargo;
     private ResourcesMove worker;
+    private bool networkCarrier;
     private NavMeshAgent agent;
     private GOScript command;
     private AttackController attack;
@@ -62,6 +63,7 @@ public class CarrierTask : MonoBehaviour
     private void Awake()
     {
         cargo = GetComponent<GettingResources>(); worker = GetComponent<ResourcesMove>();
+        networkCarrier = TryGetComponent<RtsNetworkUnit>(out var network) && network.IsCarrier;
         agent = GetComponent<NavMeshAgent>(); command = GetComponent<GOScript>(); attack = GetComponent<AttackController>();
         animator = GetComponent<Unit>()?.animator ?? GetComponentInChildren<Animator>(true);
     }
@@ -109,8 +111,10 @@ public class CarrierTask : MonoBehaviour
             routeTarget = target; nextRepath = 0;
             lastProgressTime = Time.time; lastProgressPosition = transform.position;
         }
-        bool reachedPoint = Vector3.Distance(transform.position, point) <= 1.2f;
-        if (!worker.IsAtMiningHome(target) && !reachedPoint)
+        float serviceRadius = networkCarrier && target.TryGetComponent<RtsProductionRecipe>(out _) ? .75f : 1.2f;
+        bool reachedPoint = Vector3.Distance(transform.position, point) <= serviceRadius;
+        bool reached = reachedPoint || (!networkCarrier && worker.IsAtMiningHome(target));
+        if (!reached)
         {
             if ((transform.position - lastProgressPosition).sqrMagnitude > 0.25f)
             { lastProgressPosition = transform.position; lastProgressTime = Time.time; }
@@ -286,6 +290,7 @@ public class CarrierTask : MonoBehaviour
                     State = TaskState.Deliver; Status = "Доставить"; return true;
                 }
                 if (CargoCount > 0) continue;
+                if (networkCarrier && PlanRecipeTransfer(target, input, requested)) return true;
                 foreach (var warehouse in WarehouseStorage.All)
                 {
                     if (warehouse == null || !warehouse.isActiveAndEnabled) continue;
@@ -301,6 +306,28 @@ public class CarrierTask : MonoBehaviour
                     ReservedCargo = amount; State = TaskState.Collect; Status = "Забрать"; return true;
                 }
             }
+        }
+        return false;
+    }
+
+    private bool PlanRecipeTransfer(RecipeBuilding target, ResourceType input, int requested)
+    {
+        foreach (var recipe in RecipeBuilding.All)
+        {
+            if (recipe == null || recipe == target || !(recipe is RtsProductionRecipe) || !recipe.isActiveAndEnabled
+                || recipe.OutputType != input || !BuildingRoadAccess.Allows(recipe)) continue;
+            var candidate = recipe.gameObject;
+            if (sources.TryGetValue(candidate, out var owner) && owner != null && owner != this) continue;
+            int amount = Mathf.Min(Mathf.Max(1, worker.MaxUnitResources), Mathf.Min(requested, recipe.StoredOutput));
+            if (amount <= 0 || !Reachable(candidate) || !target.ReserveDelivery(this, input, amount)) continue;
+            sources[candidate] = this;
+            source = candidate;
+            production = target;
+            productionInput = input;
+            ReservedCargo = amount;
+            State = TaskState.Collect;
+            Status = "Забрать продукцию";
+            return true;
         }
         return false;
     }

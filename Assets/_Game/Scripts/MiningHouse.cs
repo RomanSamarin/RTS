@@ -14,6 +14,10 @@ public class MiningHouse : MonoBehaviour
     private void OnEnable() { if (!houses.Contains(this)) houses.Add(this); }
     private void OnDisable() { houses.Remove(this); }
 
+    internal OreDeposit AssignedNetworkDeposit { private get; set; }
+    internal bool AllowsDeposit(OreDeposit deposit)
+        => ReferenceEquals(AssignedNetworkDeposit, null) || AssignedNetworkDeposit == deposit;
+
     public void Deposit(GettingResources cargo)
     {
         storedIron += cargo.Iron;

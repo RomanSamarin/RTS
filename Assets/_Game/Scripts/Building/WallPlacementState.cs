@@ -172,6 +172,7 @@ public sealed class WallPlacementState : IBuildingState
             {
                 if (reused[i]) { reservations.Add(null); continue; }
                 var materials = new GameObject("WallMaterials").AddComponent<ConstructionMaterials>();
+                FactionMember.Set(materials.gameObject, FactionMember.LocalPlayer);
                 reservations.Add(materials);
                 if (!materials.Initialize(CostAt(i, cells.Count))) { Debug.LogWarning("[Стены] Материалы уже зарезервированы другой стройкой."); return false; }
             }
@@ -183,7 +184,7 @@ public sealed class WallPlacementState : IBuildingState
                 created.Add(index);
                 createdCells.Add(cells[i]);
                 var building = placer.GetPlacedObject(index);
-                FactionMember.Set(building,Faction.Player);
+                FactionMember.Set(building,FactionMember.LocalPlayer);
                 var cell = cells[i];
                 occupied.AddObjectAt(cell, Vector2Int.one, data.ID, index);
                 building.GetComponent<BuildingHealth>().Destroyed += _ =>

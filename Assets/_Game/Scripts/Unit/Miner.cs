@@ -84,7 +84,7 @@ public class Miner : MonoBehaviour
                 float best = searchRadius * searchRadius;
                 foreach (var deposit in OreDeposit.All)
                 {
-                    if (deposit == null || deposit.Remaining <= 0) continue;
+                    if (deposit == null || deposit.Remaining <= 0 || !storage.AllowsDeposit(deposit)) continue;
                     float distance = (deposit.WorkPosition - transform.position).sqrMagnitude;
                     if (distance >= best) continue;
                     var path = new NavMeshPath();

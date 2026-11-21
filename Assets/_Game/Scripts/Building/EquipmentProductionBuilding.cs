@@ -109,6 +109,13 @@ public abstract class EquipmentProductionBuilding : RecipeBuilding
     public override float WorkProgress => progress;
     public int GetInputAmount(ResourceType type) => Amount(inputStock, type);
     public int GetOutputAmount(ResourceType type) => Amount(outputStock, type);
+    internal void ConfigureNetworkProduction(EquipmentProductionBuilding definition)
+    {
+        recipes = new List<Recipe>(definition.Recipes);
+        inputCapacity = definition.inputCapacity;
+        outputCapacity = definition.outputCapacity;
+        SetRepeat(false);
+    }
     public override int RequestedInput
     {
         get { int amount = 0; foreach (var type in InputTypes) amount += RequestedInputFor(type); return amount; }

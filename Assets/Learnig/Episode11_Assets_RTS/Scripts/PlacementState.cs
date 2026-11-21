@@ -86,7 +86,7 @@ public class PlacementState : IBuildingState
 
         int index = objectPlacer.PlaceObject(database.objectsData[selectedObjectIndex].Prefab, grid.CellToWorld(gridPosition), rotation);
         LastPlacedObject = objectPlacer.GetPlacedObject(index);
-        if(!IsFloorID(ID))FactionMember.Set(LastPlacedObject,Faction.Player);
+        if(!IsFloorID(ID))FactionMember.Set(LastPlacedObject,FactionMember.LocalPlayer);
 
         // If this id is a floor id, then its a floor data, else its a furniture data
         GridData selectedData = GetAllFloorIDs().Contains(database.objectsData[selectedObjectIndex].ID) ? floorData : furnitureData;

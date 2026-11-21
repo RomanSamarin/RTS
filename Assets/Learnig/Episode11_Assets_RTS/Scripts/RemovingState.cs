@@ -49,6 +49,9 @@ public class RemovingState : IBuildingState
             gameObjectIndex = selectedData.GetRepresentationIndex(gridPosition);
             if (gameObjectIndex == -1)
                 return false;
+            var placed = objectPlacer.GetPlacedObject(gameObjectIndex);
+            if (selectedData == furnitureData && !FactionMember.IsPlayer(placed))
+                return false;
             selectedData.RemoveObjectAt(gridPosition);
             objectPlacer.RemoveObjectAt(gameObjectIndex);
 

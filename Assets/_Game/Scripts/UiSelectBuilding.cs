@@ -63,6 +63,8 @@ public class UiSelectBuilding : MonoBehaviour, ISelectable
         GameObject panel = Panel;
         if (panel != null)
         {
+            foreach (var hiring in panel.GetComponentsInChildren<WorkplaceHiring>(true))
+                hiring.BindLegacyPanel(this);
             var warehouseUI = panel.GetComponentInChildren<_Game.Scripts.UI.WarehouseUI>(true);
             var productionUI = panel.GetComponentInChildren<_Game.Scripts.UI.EquipmentProductionPanel>(true);
             var barracksUI = panel.GetComponentInChildren<_Game.Scripts.UI.BarracksActionsPanel>(true);

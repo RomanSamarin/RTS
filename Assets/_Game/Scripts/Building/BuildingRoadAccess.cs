@@ -83,10 +83,37 @@ public class BuildingRoadAccess : MonoBehaviour
             if(body.enabled&&!body.isTrigger)return body;
         return null;
     }
+    internal static bool TryWorkplacePath(GameObject workplace, NavMeshAgent agent, out NavMeshPath path, out Vector3 destination)
+    {
+        path = null;
+        destination = default;
+        if (workplace == null || agent == null || !agent.enabled || !agent.isOnNavMesh) return false;
+        var access = workplace.GetComponent<BuildingRoadAccess>();
+        Vector3 point = workplace.transform.position;
+        Vector3 outward = workplace.transform.forward;
+        if (access == null || !access.TryConnectionPoint(out point, out outward))
+        {
+            point = workplace.transform.position;
+            if (BuildingEntrance.TryGetWorldPoint(workplace, out var entrance)) point = entrance;
+        }
+        var filter = new NavMeshQueryFilter { agentTypeID = agent.agentTypeID, areaMask = agent.areaMask };
+        var candidate = new NavMeshPath();
+        for (int i = 0; i < 3; i++)
+        {
+            Vector3 probe = point + outward * (i * .75f);
+            if (!NavMesh.SamplePosition(probe, out var hit, 1.25f, filter) ||
+                !agent.CalculatePath(hit.position, candidate) || candidate.status != NavMeshPathStatus.PathComplete) continue;
+            path = candidate;
+            destination = hit.position;
+            return true;
+        }
+        return false;
+    }
     public static void Ensure(GameObject building)
     {
-        if(building==null||building.GetComponent<BuildingRoadAccess>()!=null||building.GetComponent<WallSegment>()!=null||
-            building.GetComponent<BanditCamp>()!=null||building.GetComponent<ConstructionSite>()!=null||!FactionMember.IsPlayer(building))return;
+        if(building==null||building.transform is RectTransform||building.GetComponentInParent<Canvas>(true)!=null||
+            building.GetComponent<BuildingRoadAccess>()!=null||building.GetComponent<WallSegment>()!=null||
+            building.GetComponent<BanditCamp>()!=null||building.GetComponent<ConstructionSite>()!=null||!FactionMember.HasPlayerOwner(building))return;
         building.AddComponent<BuildingRoadAccess>();
     }
     public static bool Allows(Component building) => building==null||Allows(building.gameObject);

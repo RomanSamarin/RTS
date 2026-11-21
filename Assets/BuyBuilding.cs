@@ -63,10 +63,6 @@ public class BuyBuilding : MonoBehaviour
             return true;
         }
 
-        BuildCost.Get(objectData, out int neededWood, out int neededStone, out int neededWheat, out int neededFish);
-
-        Debug.Log($"[BuyBuilding] Требуется: Wood = {neededWood}, Stone = {neededStone}, Wheat = {neededWheat}, Fish = {neededFish}");
-
         if (ResourcesManager.Instance == null)
         {
             Debug.LogError("[BuyBuilding] ResourcesManager не найден!");
@@ -81,18 +77,9 @@ public class BuyBuilding : MonoBehaviour
         }
         else
         {
-            // Подробно пишем, какого именно ресурса не хватает
-            if (!ResourcesManager.Instance.HasEnough(neededWood, 0, 0, 0))
-                Debug.LogWarning($"[BuyBuilding] Не хватает Wood (нужно {neededWood}).");
-
-            if (!ResourcesManager.Instance.HasEnough(0, neededStone, 0, 0))
-                Debug.LogWarning($"[BuyBuilding] Не хватает Stone (нужно {neededStone}).");
-
-            if (!ResourcesManager.Instance.HasEnough(0, 0, neededWheat, 0))
-                Debug.LogWarning($"[BuyBuilding] Не хватает Wheat (нужно {neededWheat}).");
-
-            if (!ResourcesManager.Instance.HasEnough(0, 0, 0, neededFish))
-                Debug.LogWarning($"[BuyBuilding] Не хватает Fish (нужно {neededFish}).");
+            foreach (var material in BuildCost.GetMaterials(objectData))
+                if (ResourcesManager.Instance.GetAmount(material.Key) < material.Value)
+                    Debug.LogWarning($"[BuyBuilding] Не хватает {material.Key} (нужно {material.Value}).");
         }
 
         return enough;

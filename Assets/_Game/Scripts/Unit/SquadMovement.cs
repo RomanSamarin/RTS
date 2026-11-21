@@ -7,11 +7,13 @@ public class SquadMovement : MonoBehaviour
 {
     private class Member
     {
-        public SquadMember link;public GOScript command;public NavMeshAgent agent;
+        public SquadMember link;public GOScript command;public RtsNetworkUnit network;public NavMeshAgent agent;
         public Vector3 slot,offset,lastWaypoint;public int rank;public bool sent,arrived;
         public Vector3 probe;
         public Vector3 departure;
         public float nextRepath;
+        public float NaturalSpeed => network != null ? network.FormationSpeed : command.NaturalSpeed;
+        public bool SetWaypoint(Vector3 point) => network != null ? network.SetMarchWaypoint(point) : command.SetSquadWaypoint(point);
     }
     private readonly List<Member> members=new List<Member>();
     private readonly List<Vector3> route=new List<Vector3>();
@@ -61,10 +63,38 @@ public class SquadMovement : MonoBehaviour
         return health!=null&&health.enabled&&health.unitHealth>0&&worker!=null&&(worker.role==ResourcesMove.UnitRole.Soldier||unit.GetComponent<Catapult>()!=null)&&unit.GetComponent<GOScript>()!=null
             &&agent!=null&&agent.enabled&&agent.isOnNavMesh;
     }
+
+    internal static bool MoveNetworkFormation(List<GameObject> units, Vector3 center)
+    {
+        if (units.Count < 2) return false;
+        int group = FormationHold.GetGroup(units[0]);
+        if (group == 0 || !FormationHold.TryGetFacing(units[0], out var facing)) return false;
+        var targets = new List<Vector3>(units.Count);
+        var oldCenter = Vector3.zero;
+        foreach (var unit in units)
+        {
+            if (!EligibleNetwork(unit) || FormationHold.GetGroup(unit) != group
+                || !FormationHold.TryGetPoint(unit, out var point)) return false;
+            targets.Add(point);
+            oldCenter += point;
+        }
+        oldCenter /= units.Count;
+        for (int i = 0; i < targets.Count; i++) targets[i] = center + targets[i] - oldCenter;
+        return MoveSlots(units, targets, facing, assemble: false, network: true);
+    }
+
+    private static bool EligibleNetwork(GameObject unit)
+        => unit != null && unit.activeInHierarchy && unit.TryGetComponent<RtsNetworkUnit>(out var fighter)
+            && fighter.IsSpawned && fighter.IsServer && fighter.IsMeleeFighter && fighter.Health > 0
+            && unit.TryGetComponent<NavMeshAgent>(out var agent) && agent.enabled && agent.isOnNavMesh;
+
     public static bool MoveSlots(List<GameObject> units,List<Vector3> targets,Vector3 facing,bool assemble=false)
+        => MoveSlots(units, targets, facing, assemble, network: false);
+
+    private static bool MoveSlots(List<GameObject> units,List<Vector3> targets,Vector3 facing,bool assemble,bool network)
     {
         if(units.Count<2||units.Count!=targets.Count)return false;
-        foreach(var unit in units)if(!Eligible(unit))return false;
+        foreach(var unit in units)if(!(network?EligibleNetwork(unit):Eligible(unit)))return false;
         var first=units[0].GetComponent<NavMeshAgent>();int mask=first.areaMask;float gap=.8f;
         Vector3 start=Vector3.zero,finish=Vector3.zero;
         foreach(var unit in units)
@@ -85,10 +115,12 @@ public class SquadMovement : MonoBehaviour
         start/=units.Count;finish/=units.Count;
         if(!NavMesh.SamplePosition(start,out var startHit,4f,filter)||!NavMesh.SamplePosition(finish,out var finishHit,4f,filter))return false;
         var path=new NavMeshPath();if(!NavMesh.CalculatePath(startHit.position,finishHit.position,filter,path)||path.status!=NavMeshPathStatus.PathComplete)return false;
+        var corners=path.corners;
+        if(corners.Length==0)return false;
         var session=new GameObject("Squad movement").AddComponent<SquadMovement>();
         session.filter=filter;session.finish=finishHit.position;session.finalForward=facing;session.spacing=gap;
         session.columnLength=units.Count*gap;
-        session.route.AddRange(path.corners);session.length=SquadMovementRules.Length(session.route);session.formationGroup=FormationHold.BeginGroup();
+        session.route.AddRange(corners);session.length=SquadMovementRules.Length(session.route);session.formationGroup=FormationHold.BeginGroup();
         float extent=0;
         foreach(var slot in slots)extent=Mathf.Max(extent,Vector3.Distance(slot,finishHit.position));
         session.assembling=SquadMovementRules.UseDirectAssembly(assemble,session.length,extent,gap);
@@ -97,6 +129,7 @@ public class SquadMovement : MonoBehaviour
         for(int i=0;i<units.Count;i++)
         {
             var unit=units[i];var command=unit.GetComponent<GOScript>();
+            var networkUnit=network ? unit.GetComponent<RtsNetworkUnit>() : null;
             Vector3 departure=unit.transform.position;
             // Обычный ПКМ сразу ведёт вперёд из текущего места, без сбора вокруг центра.
             Vector3 firstGoal=slots[i];
@@ -107,13 +140,14 @@ public class SquadMovement : MonoBehaviour
                 if(NavMesh.SamplePosition(lead,out var hit,gap,filter)
                     &&unit.GetComponent<NavMeshAgent>().CalculatePath(hit.position,check)&&check.status==NavMeshPathStatus.PathComplete)firstGoal=hit.position;
             }
-            command.MoveTo(firstGoal);
+            if(networkUnit!=null)networkUnit.BeginMarch(firstGoal);
+            else command.MoveTo(firstGoal);
             var link=unit.GetComponent<SquadMember>();if(link==null)link=unit.AddComponent<SquadMember>();link.Join(session);
             Vector3 offset=slots[i]-finishHit.position;
             session.width=Mathf.Max(session.width,Mathf.Abs(Vector3.Dot(offset,side)));
-            session.members.Add(new Member{link=link,command=command,agent=unit.GetComponent<NavMeshAgent>(),slot=slots[i],departure=departure,
+            session.members.Add(new Member{link=link,command=command,network=networkUnit,agent=unit.GetComponent<NavMeshAgent>(),slot=slots[i],departure=departure,
                 offset=new Vector3(Vector3.Dot(offset,side),0,Vector3.Dot(offset,direction))});
-            FormationHold.SetPoint(unit,slots[i],facing,session.formationGroup);
+            if(!network)FormationHold.SetPoint(unit,slots[i],facing,session.formationGroup);
         }
         // В колонну первым входит тот, кто уже впереди, а не обладатель нового переднего места.
         session.members.Sort((a,b)=>Vector3.Dot(b.departure-a.departure,direction).CompareTo(0));
@@ -126,7 +160,7 @@ public class SquadMovement : MonoBehaviour
     private void RefreshSpeed()
     {
         slowest=float.PositiveInfinity;
-        foreach(var member in members)slowest=Mathf.Min(slowest,member.command.NaturalSpeed);
+        foreach(var member in members)slowest=Mathf.Min(slowest,member.NaturalSpeed);
         if(float.IsPositiveInfinity(slowest))slowest=0;
     }
     private bool CorridorWide(Vector3 point,Vector3 forward)
@@ -152,8 +186,13 @@ public class SquadMovement : MonoBehaviour
     }
     private void Finish(Member member)
     {
-        member.arrived=true;member.link.Leave();member.command.StopMoving();
-        FormationHold.SetPoint(member.command.gameObject,member.slot,finalForward,formationGroup);
+        member.arrived=true;member.link.Leave();
+        if(member.network!=null)member.network.FinishMarch(member.slot,finalForward,formationGroup);
+        else
+        {
+            member.command.StopMoving();
+            FormationHold.SetPoint(member.command.gameObject,member.slot,finalForward,formationGroup);
+        }
     }
     private void UpdateAssembly()
     {
@@ -169,7 +208,7 @@ public class SquadMovement : MonoBehaviour
             if(Time.time>=member.nextRepath&&(!member.agent.hasPath||member.agent.pathStatus!=NavMeshPathStatus.PathComplete))
             {
                 member.nextRepath=Time.time+1;
-                member.command.SetSquadWaypoint(member.slot);
+                member.SetWaypoint(member.slot);
             }
         }
         if(members.Count==0){Destroy(gameObject);return;}
@@ -181,11 +220,12 @@ public class SquadMovement : MonoBehaviour
         for(int i=members.Count-1;i>=0;i--)
         {
             var m=members[i];
-            if(m.link==null||!m.link.isActiveAndEnabled||!Eligible(m.link.gameObject)||m.link.GetComponent<Unit>().unitHealth<=0)
+            if(m.link==null||!m.link.isActiveAndEnabled
+                ||!(m.network!=null?EligibleNetwork(m.link.gameObject):Eligible(m.link.gameObject))||m.link.GetComponent<Unit>().unitHealth<=0)
             {if(m.link!=null)m.link.Leave();else members.RemoveAt(i);}
         }
         if(members.Count==0){Destroy(gameObject);return;}
-        RefreshSpeed();foreach(var m in members)m.agent.speed=Mathf.Min(m.command.NaturalSpeed,slowest);
+        RefreshSpeed();foreach(var m in members)m.agent.speed=SquadMovementRules.LimitSpeed(m.NaturalSpeed,slowest);
         if(Time.time<nextTick)return;float dt=Mathf.Min(.25f,Time.time-nextTick+.15f);nextTick=Time.time+.15f;
         if(assembling){UpdateAssembly();return;}
         var center=SquadMovementRules.Sample(route,progress,out var forward);
@@ -256,14 +296,19 @@ public class SquadMovement : MonoBehaviour
             if(Time.time>=m.nextRepath&&(!m.sent||(m.lastWaypoint-hit.position).sqrMagnitude>.04f||!m.agent.hasPath))
             {
                 m.nextRepath=Time.time+.3f+(m.rank%4)*.025f;
-                if(m.command.SetSquadWaypoint(hit.position)){m.lastWaypoint=hit.position;m.sent=true;}
+                if(m.SetWaypoint(hit.position)){m.lastWaypoint=hit.position;m.sent=true;}
             }
         }
     }
     private void Abort(string reason)
     {
         Debug.LogWarning("[Отряд] "+reason,this);
-        foreach(var m in new List<Member>(members)){m.link.Leave();m.command.StopMoving();FormationHold.Clear(m.command.gameObject);}
+        foreach(var m in new List<Member>(members))
+        {
+            m.link.Leave();
+            if(m.network!=null)m.network.StopMarch();
+            else {m.command.StopMoving();FormationHold.Clear(m.command.gameObject);}
+        }
         Destroy(gameObject);
     }
     private void OnDestroy(){foreach(var m in new List<Member>(members))if(m.link!=null)m.link.Leave();}

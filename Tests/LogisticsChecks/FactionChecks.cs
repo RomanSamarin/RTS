@@ -24,6 +24,13 @@ public static class FactionChecks
             Check(FactionRules.AreEnemies(a,b)==FactionRules.AreEnemies(b,a),"symmetric hostility");
         }
         Check(FactionRules.IsControllable(Faction.Player)&&!FactionRules.IsControllable(Faction.Bandits)&&!FactionRules.IsControllable(Faction.Neutral),"local control");
+        var players = new[] { Faction.Player, Faction.Player2, Faction.Player3, Faction.Player4 };
+        for (int i = 0; i < players.Length; i++)
+        {
+            Check(FactionRules.PlayerId(players[i]) == i + 1, "stable player identity");
+            foreach (var other in players)
+                Check(FactionRules.IsControllable(other, players[i]) == (other == players[i]), "control depends on local player");
+        }
         Check(FactionRules.InferLegacy(true,true,true,true,true)==Faction.Neutral,"resource before legacy enemy tag");
         Check(FactionRules.InferLegacy(false,true,true,false,true)==Faction.Bandits,"bandit AI overrides worker component");
         Check(FactionRules.InferLegacy(false,false,true,true,true)==Faction.Player,"old builder false flag is not enemy ownership");
@@ -34,6 +41,10 @@ public static class FactionChecks
         Check(player.AvailableSupply(enemy,ResourceType.Wheat)==0,"cannot plan inputs from hostile warehouse");
         FactionMember.Set(enemy.gameObject,Faction.Player);
         Check(player.AvailableSupply(enemy,ResourceType.Wheat)==20,"allied physical inputs available");
+        FactionMember.Set(enemy.gameObject, Faction.Player2);
+        Check(player.AvailableSupply(enemy, ResourceType.Wheat) == 0, "second player's stock stays separate");
+        FactionMember.Set(player.gameObject, Faction.Player2);
+        Check(player.AvailableSupply(enemy, ResourceType.Wheat) == 20, "second player can use own stock");
         var barracks=new TrainingEquipmentStore();
         FactionMember.Set(enemy.gameObject,Faction.Bandits);
         enemy.AddResource(ResourceType.Sword,1);

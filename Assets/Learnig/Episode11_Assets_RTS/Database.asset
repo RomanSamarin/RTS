@@ -13,6 +13,15 @@ MonoBehaviour:
   m_Name: Database
   m_EditorClassIdentifier:
   objectsData:
+  - <Name>k__BackingField: Дом
+    <ID>k__BackingField: 75
+    description: Жильё на пять мест
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 6129560512166644152, guid: 0aa56e38c8fe05740a17cfa82de5517c, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 10
+    <benefits>k__BackingField: []
   - <Name>k__BackingField: Hospital
     <ID>k__BackingField: 70
     description: Automatic recovery for wounded soldiers; beds and delivered food
@@ -167,4 +176,93 @@ MonoBehaviour:
       amount: 35
     - resource: Stone
       amount: 15
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: "\u041C\u0435\u043B\u044C\u043D\u0438\u0446\u0430"
+    <ID>k__BackingField: 76
+    description:
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 1308789559580672496, guid: da653d1ab339c984bb1bd81726f39319, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 20
+    - resource: Stone
+      amount: 5
+    <benefits>k__BackingField: []
+
+  - <Name>k__BackingField: "\u041F\u0435\u043A\u0430\u0440\u043D\u044F"
+    <ID>k__BackingField: 77
+    description:
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 5613697321118208245, guid: 6038241be2970e24d9ae4de67d1706c0, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 20
+    - resource: Stone
+      amount: 5
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: "\u0424\u0435\u0440\u043C\u0430"
+    <ID>k__BackingField: 78
+    description:
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 5613085158208561157, guid: 858ca68dc47bfde4885f779bf9b49701, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 15
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: "\u041A\u0443\u0437\u043D\u0438\u0446\u0430"
+    <ID>k__BackingField: 79
+    description:
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 1879510224929110710, guid: 13cf237a8b62e8a4ea4edbfe00ba8879, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 25
+    - resource: Stone
+      amount: 10
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: "\u041C\u0430\u0441\u0442\u0435\u0440\u0441\u043A\u0430\u044F"
+    <ID>k__BackingField: 80
+    description:
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 1805469089725401239, guid: f1ea0c23fb3af0a43961ba2c2a663f44, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 30
+    - resource: Stone
+      amount: 10
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: "\u0428\u0430\u0445\u0442\u0430"
+    <ID>k__BackingField: 81
+    description:
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 3140100526911199875, guid: 703d2dc3e5ae8a843ace1a0d0ffaec42, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 20
+    - resource: Stone
+      amount: 10
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: "\u0421\u0442\u0440\u0435\u043B\u044C\u0431\u0438\u0449\u0435"
+    <ID>k__BackingField: 82
+    description:
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 3070035623197798647, guid: fd5651eeb13f0f0459525c0f6c8414ef, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 30
+    - resource: Stone
+      amount: 10
+    <benefits>k__BackingField: []
+  - <Name>k__BackingField: "\u041A\u043E\u043D\u044E\u0448\u043D\u044F"
+    <ID>k__BackingField: 83
+    description:
+    <Size>k__BackingField: {x: 1, y: 1}
+    <Prefab>k__BackingField: {fileID: 8011313658575159837, guid: 56fbadcd96a87bd4b97b40a445e37506, type: 3}
+    <requirements>k__BackingField:
+    - resource: Wood
+      amount: 40
+    - resource: Stone
+      amount: 20
+    - resource: Gold
+      amount: 10
     <benefits>k__BackingField: []

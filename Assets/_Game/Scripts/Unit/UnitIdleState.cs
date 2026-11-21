@@ -14,6 +14,7 @@ public class UnitIdleState : StateMachineBehaviour
     // OnStateUpdate is called on each Update frame between OnStateEnter and OnStateExit callbacks
     override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
+        if (animator.GetComponentInParent<RtsNetworkUnit>()?.IsCombatUnit == true) return;
         if(SaveGameManager.IsLoading)return;
         if(SiegeLadderAnimation.Controls(animator))return;
         if(WorkerAnimation.Controls(animator))return;

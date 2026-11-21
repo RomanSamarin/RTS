@@ -31,7 +31,7 @@ public class UnitSelectionBox : MonoBehaviour
     private void Update()
     {
         if(SaveGameManager.IsLoading)return;
-        if (SettingsMenu.BlocksWorldInput) { CancelSelection(); return; }
+        if (SettingsMenu.BlocksWorldInput || RtsNetworkConstruction.BlocksWorldInput) { CancelSelection(); return; }
         if(ManagerGO.Instance!=null&&(ManagerGO.Instance.BlocksMilitarySelection||Input.GetKeyDown(ManagerGO.Instance.attackMoveKey)||Input.GetKeyDown(ManagerGO.Instance.defenseFacingKey)||Input.GetKeyDown(ManagerGO.Instance.retreatKey)||Input.GetKeyDown(ManagerGO.Instance.patrolKey)))
         {CancelSelection();return;}
         if (Barracks.BlocksWorldInput || RoadBuilder.BlocksWorldInput) { CancelSelection(); return; }

@@ -47,6 +47,7 @@ public class RoadBuilder : MonoBehaviour
     private RoadStroke snappedRoad;
     private bool startRoadJoin;
     private Terrain[] terrains;
+    internal bool FixedNetworkRoads { get; set; }
 
     private void Awake()
     {
@@ -77,7 +78,8 @@ public class RoadBuilder : MonoBehaviour
     public void SelectShape(int shape){selectedShape=(RoadShape)Mathf.Clamp(shape,0,6);bend=shape==(int)RoadShape.Corner?3f:0f;InvalidatePreview();}
     private void Begin(bool erase)
     {
-        if(!isActiveAndEnabled)return;
+        if(!isActiveAndEnabled || (FixedNetworkRoads && (erase || RtsNetworkSession.Instance?.Ready != true)))return;
+        if(FixedNetworkRoads) RtsNetworkConstruction.CancelPlacement();
         if(SoldiersFormation.IsPlacing){Status="Сначала завершите расстановку войск";return;}
         PlacementSystem.Instance?.CancelPlacement();Barracks.CancelActiveRallySelection();
         BuildingSelectionManager.Instance?.DeselectCurrent();
@@ -106,6 +108,7 @@ public class RoadBuilder : MonoBehaviour
     }
     private void Update()
     {
+        if(FixedNetworkRoads && RtsNetworkSession.Instance?.Ready != true)return;
         if(SaveGameManager.IsLoading || SettingsMenu.BlocksWorldInput)return;
         if(buildKey!=KeyCode.None&&Input.GetKeyDown(buildKey))
         {
@@ -124,7 +127,7 @@ public class RoadBuilder : MonoBehaviour
         if(Input.GetMouseButtonDown(1))
         {if(anchors.Count>0){ClearDraft();preview.gameObject.SetActive(false);}else StopRoadPlacement();return;}
         if(Time.frameCount==startedFrame)return;
-        if(Input.GetKeyDown(KeyCode.Delete)){removing=!removing;ClearDraft();}
+        if(!FixedNetworkRoads && Input.GetKeyDown(KeyCode.Delete)){removing=!removing;ClearDraft();}
         if(Input.GetKeyDown(KeyCode.Backspace)&&anchors.Count>0){anchors.RemoveAt(anchors.Count-1);InvalidatePreview();}
         if(Input.GetKeyDown(KeyCode.R)){bend+=Input.GetKey(KeyCode.LeftShift)?-2f:2f;if(bend>10f)bend=-10f;if(bend<-10f)bend=10f;InvalidatePreview();}
         Camera camera=Camera.main;
@@ -163,6 +166,13 @@ public class RoadBuilder : MonoBehaviour
         }
         // Повторная проверка прямо перед фиксацией: строится ровно показанный маршрут.
         if(!valid){Status="Маршрут пересекает здание, стройку или слишком крутой склон";return;}
+        if(FixedNetworkRoads)
+        {
+            RtsNetworkSession.Instance.RequestRoad(draft.ToArray(), startRoadJoin, snappedRoad != null);
+            ClearDraft();preview.gameObject.SetActive(false);
+            Status="Проверка дороги на хосте";
+            return;
+        }
         var roadObject=new GameObject("Road");roadObject.layer=2;roadObject.transform.SetParent(transform,false);
         var road=roadObject.AddComponent<RoadStroke>();road.Rebuild(this,draft,roadWidth,RoadMaterial,true,startRoadJoin,snappedRoad!=null);
         roads.Add(road);IndexRoad(road);Revision++;ClearDraft();preview.gameObject.SetActive(false);
@@ -179,18 +189,23 @@ public class RoadBuilder : MonoBehaviour
         float length=0;for(int i=1;i<knots.Count;i++)length+=Vector3.Distance(knots[i-1],knots[i]);
         if(length>Mathf.Max(5f,maximumRoadLength)){preview.gameObject.SetActive(false);valid=false;Status="Разбейте длинную дорогу на несколько участков";return;}
         RoadCurve.Sample(knots,sampleSpacing,draft,startDirection,endDirection);
-        valid=ValidateDraft();preview.gameObject.SetActive(draft.Count>1);
+        valid=ValidateRoute(draft, startRoadJoin, snappedRoad != null, startBuilding, snapBuilding);
+        if(valid && FixedNetworkRoads) valid=RtsNetworkSession.Instance.CanPreviewRoad(draft);
+        preview.gameObject.SetActive(draft.Count>1);
         preview.Rebuild(this,draft,roadWidth,valid?greenMaterial:redMaterial,false,startRoadJoin,snappedRoad!=null);
     }
-    private bool ValidateDraft()
+    internal bool ValidateNetworkRoute(List<Vector3> route, bool joinStart, bool joinEnd)
+        => ValidateRoute(route, joinStart, joinEnd, null, null);
+
+    private bool ValidateRoute(List<Vector3> route, bool joinStart, bool joinEnd, BuildingRoadAccess from, BuildingRoadAccess to)
     {
-        if(draft.Count<2)return false;
+        if(route.Count<2)return false;
         float totalLength=0;
-        Bounds area=new Bounds(draft[0],Vector3.zero);
-        for(int i=0;i<draft.Count;i++)
+        Bounds area=new Bounds(route[0],Vector3.zero);
+        for(int i=0;i<route.Count;i++)
         {
-            Vector3 p=draft[i];if(!SampleGround(p,out float y))return false;p.y=y;draft[i]=p;area.Encapsulate(p);
-            Vector3 tangent=draft[Mathf.Min(draft.Count-1,i+1)]-draft[Mathf.Max(0,i-1)];tangent.y=0;
+            Vector3 p=route[i];if(!SampleGround(p,out float y))return false;p.y=y;route[i]=p;area.Encapsulate(p);
+            Vector3 tangent=route[Mathf.Min(route.Count-1,i+1)]-route[Mathf.Max(0,i-1)];tangent.y=0;
             if(tangent.sqrMagnitude>.0001f)
             {
                 Vector3 side=Vector3.Cross(Vector3.up,tangent.normalized)*roadWidth*.5f;
@@ -199,7 +214,7 @@ public class RoadBuilder : MonoBehaviour
             }
             if(i>0)
             {
-                Vector3 delta=p-draft[i-1];float horizontal=new Vector2(delta.x,delta.z).magnitude;
+                Vector3 delta=p-route[i-1];float horizontal=new Vector2(delta.x,delta.z).magnitude;
                 totalLength+=delta.magnitude;
                 if(horizontal>.001f&&Mathf.Atan2(Mathf.Abs(delta.y),horizontal)*Mathf.Rad2Deg>maximumSlope)return false;
             }
@@ -214,20 +229,20 @@ public class RoadBuilder : MonoBehaviour
             var body=BuildingRoadAccess.SolidBody(building.gameObject);if(body==null)continue;Bounds box=body.bounds;
             if(box.max.x<area.min.x||box.min.x>area.max.x||box.max.z<area.min.z||box.min.z>area.max.z)continue;
             float radius=roadWidth*.5f+.015f;
-            if(startRoadJoin&&JunctionIntersects(draft[0],radius,box))return false;
-            if(snappedRoad!=null&&JunctionIntersects(draft[draft.Count-1],radius,box))return false;
+            if(joinStart&&JunctionIntersects(route[0],radius,box))return false;
+            if(joinEnd&&JunctionIntersects(route[route.Count-1],radius,box))return false;
             // Разрешён только непрерывный короткий заход от торца к SnapPoint этого здания.
-            int startLimit=0,endLimit=draft.Count;
+            int startLimit=0,endLimit=route.Count;
             var access=building.GetComponent<BuildingRoadAccess>();
             if(access!=null&&access.SnapPoint!=null)
             {
-                if(startBuilding==access)
-                    while(startLimit+1<draft.Count&&RoadCurve.RibbonIntersectsBox(draft[startLimit],draft[startLimit+1],roadWidth*.5f,box))startLimit++;
-                if(snapBuilding==access)
-                    while(endLimit>1&&RoadCurve.RibbonIntersectsBox(draft[endLimit-2],draft[endLimit-1],roadWidth*.5f,box))endLimit--;
+                if(from==access)
+                    while(startLimit+1<route.Count&&RoadCurve.RibbonIntersectsBox(route[startLimit],route[startLimit+1],roadWidth*.5f,box))startLimit++;
+                if(to==access)
+                    while(endLimit>1&&RoadCurve.RibbonIntersectsBox(route[endLimit-2],route[endLimit-1],roadWidth*.5f,box))endLimit--;
             }
-            for(int i=1;i<draft.Count;i++)
-                if(i>startLimit&&i<endLimit&&RoadCurve.RibbonIntersectsBox(draft[i-1],draft[i],roadWidth*.5f,box))return false;
+            for(int i=1;i<route.Count;i++)
+                if(i>startLimit&&i<endLimit&&RoadCurve.RibbonIntersectsBox(route[i-1],route[i],roadWidth*.5f,box))return false;
         }
         return true;
     }

@@ -8,11 +8,20 @@ public class FactionMember : MonoBehaviour
     public static readonly List<FactionMember> All=new List<FactionMember>();
     [SerializeField] private Faction faction=Faction.Player;
     public Faction Side=>faction;
+    public int PlayerId => FactionRules.PlayerId(faction);
+    public static Faction LocalPlayer { get; private set; } = Faction.Player;
     private Faction registeredFaction;
     private bool automaticallyAssigned;
     public bool IsAlly(FactionMember other)=>other!=null&&FactionRules.AreAllies(faction,other.faction);
     public bool IsEnemy(FactionMember other)=>other!=null&&FactionRules.AreEnemies(faction,other.faction);
-    public void SetFaction(Faction value){automaticallyAssigned=false;faction=value;registeredFaction=value;RefreshControlRegistration();}
+    public void SetFaction(Faction value)
+    {
+        bool changed = faction != value;
+        automaticallyAssigned = false;
+        faction = registeredFaction = value;
+        RefreshControlRegistration();
+        if (changed && TryGetComponent<HousesScript>(out _)) HousesScript.RefreshLocalHousing();
+    }
     public static FactionMember Ensure(GameObject obj)
     {
         if(obj==null)return null;
@@ -59,7 +68,27 @@ public class FactionMember : MonoBehaviour
     }
     public static Faction Of(GameObject obj){var member=Find(obj);return member!=null?member.Side:Faction.Neutral;}
     public static void Set(GameObject obj,Faction side){var member=Ensure(obj);if(member!=null)member.SetFaction(side);}
-    public static bool IsPlayer(GameObject obj)=>FactionRules.IsControllable(Of(obj));
+    public static bool IsPlayer(GameObject obj)=>FactionRules.IsControllable(Of(obj), LocalPlayer);
+    public static bool HasPlayerOwner(GameObject obj) => FactionRules.IsPlayerSide(Of(obj));
+
+    public static bool SetLocalPlayer(Faction side)
+    {
+        if (!FactionRules.IsPlayerSide(side)) return false;
+        if (LocalPlayer == side) return true;
+        ManagerGO.Instance?.DeselectAll();
+        BuildingSelectionManager.Instance?.DeselectCurrent();
+        LocalPlayer = side;
+        foreach (var member in All) if (member != null) member.RefreshControlRegistration();
+        HousesScript.RefreshLocalHousing();
+        _Game.Scripts.UI.ResourcesManager.Instance?.UpdateUI();
+        return true;
+    }
+
+    [ContextMenu("RTS/Control this owner (Play Mode)")]
+    private void ControlThisOwner()
+    {
+        if (Application.isPlaying) SetLocalPlayer(faction);
+    }
     public static bool AreEnemies(GameObject a,GameObject b)=>a!=null&&b!=null&&!HospitalPatient.Inside(a)&&!HospitalPatient.Inside(b)
         &&!ShipCrewMember.Aboard(a)&&!ShipCrewMember.Aboard(b)&&!ShipPassenger.Aboard(a)&&!ShipPassenger.Aboard(b)&&FactionRules.AreEnemies(Of(a),Of(b));
     public static bool AreAllies(GameObject a,GameObject b)=>a!=null&&b!=null&&FactionRules.AreAllies(Of(a),Of(b));
@@ -68,7 +97,7 @@ public class FactionMember : MonoBehaviour
     {
         var manager=ManagerGO.Instance;var unit=GetComponent<Unit>();
         if(unit==null||!unit.HasStarted)return;
-        bool controllable=isActiveAndEnabled&&unit.enabled&&unit.unitHealth>0&&FactionRules.IsControllable(faction);
+        bool controllable=isActiveAndEnabled&&unit.enabled&&unit.unitHealth>0&&FactionRules.IsControllable(faction, LocalPlayer);
         var population=GetComponent<UnitAdd>();
         if(population!=null&&UnitManager.Instance!=null)
         {
@@ -90,5 +119,5 @@ public class FactionMember : MonoBehaviour
     private void Update(){
         if(SaveGameManager.IsLoading)return;if(registeredFaction!=faction){registeredFaction=faction;RefreshControlRegistration();}}
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-    private static void ResetRegistry(){All.Clear();}
+    private static void ResetRegistry(){All.Clear(); LocalPlayer = Faction.Player;}
 }

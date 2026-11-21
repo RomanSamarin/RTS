@@ -30,6 +30,7 @@ public class UnitFollowState : StateMachineBehaviour
 
     override public void OnStateUpdate(Animator animator, AnimatorStateInfo stateInfo, int layerIndex)
     {
+        if (animator.GetComponentInParent<RtsNetworkUnit>()?.IsCombatUnit == true) return;
         if(SaveGameManager.IsLoading)return;
         if(SiegeLadderAnimation.Controls(animator)||RamCrewMember.Controls(animator))return;
         if(WorkerAnimation.Controls(animator))return;

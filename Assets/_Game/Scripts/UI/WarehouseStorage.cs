@@ -15,6 +15,7 @@ namespace _Game.Scripts.UI
         [SerializeField, Min(0)] private int capacity = 2000;
         [SerializeField] private bool foodOnly;
         public bool FoodOnly => foodOnly;
+        internal void LimitToFood() => foodOnly = true;
         public bool Accepts(ResourceType type) => !foodOnly || IsEdible(type)
             || type == ResourceType.Wheat || type == ResourceType.Flour
             || type == ResourceType.Fish || type == ResourceType.Meat;

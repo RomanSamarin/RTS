@@ -11,6 +11,7 @@ public class Unit : MonoBehaviour
     [Tooltip("Optional portrait for the selection card. Uses the default portrait by unit type if empty.")]
     public Sprite selectionPortrait;
     private float initialHealthRatio = 1f;
+    internal float InitialHealth => unitMaxHealth * initialHealthRatio;
     public void SetInitialHealthRatio(float ratio)
     { initialHealthRatio = Mathf.Clamp01(ratio); unitHealth = unitMaxHealth * initialHealthRatio; UpdateHealth(); }
     private float lastHostileDamage = float.NegativeInfinity;
@@ -38,6 +39,7 @@ public class Unit : MonoBehaviour
 
     void Update()
     {
+        if (TryGetComponent<RtsNetworkUnit>(out _)) return;
         if(SaveGameManager.IsLoading || hasCatapultAnimation)return;
         if (navMeshAgent == null || animator == null || !navMeshAgent.enabled || !navMeshAgent.isOnNavMesh)
             return;
@@ -76,6 +78,8 @@ public class Unit : MonoBehaviour
         HasStarted=true;
         FactionMember.Ensure(gameObject).RefreshControlRegistration();
         UpdateHealth();
+        // The network unit wires up the simulation components on the host.
+        if (TryGetComponent<RtsNetworkUnit>(out _)) return;
         BattleCombatant.Ensure(gameObject);
         MilitaryOrders.Ensure(gameObject);
         HospitalPatient.Ensure(gameObject);
@@ -142,6 +146,13 @@ public class Unit : MonoBehaviour
     public void Destroy(GameObject killer)
     {
         if (deathHandled) return;
+        if (TryGetComponent<RtsNetworkUnit>(out var network) && network.IsSpawned)
+        {
+            if (!network.IsServer) return;
+            deathHandled = true;
+            network.NetworkObject.Despawn();
+            return;
+        }
         deathHandled = true;
         if (TrySinkShip()) return;
         var bandit = GetComponent<BanditRaider>();
@@ -172,6 +183,7 @@ public class Unit : MonoBehaviour
     internal void TakeDamage(int damageToInflict, GameObject attacker, CombatHitKind hit = CombatHitKind.Melee)
     {
         if (deathHandled) return;
+        if (TryGetComponent<RtsNetworkUnit>(out var network) && network.IsSpawned && !network.IsServer) return;
         if(attacker!=null&&(HospitalPatient.Inside(gameObject)||ShipCrewMember.Aboard(gameObject)||ShipPassenger.Aboard(gameObject)))return;
         if(attacker!=null&&FactionMember.AreAllies(attacker,gameObject))return;
         damageToInflict = TroopCombat.ResolveDamage(damageToInflict, attacker, this, hit);
@@ -187,14 +199,17 @@ public class Unit : MonoBehaviour
         if (unitHealth <= 0)
         {
             Destroy(attacker);
+            return;
         }
+        if (damageToInflict > 0 && attacker != null && network != null)
+            network.RespondToHit(attacker);
     }
 
     // Оставили старый метод для совместимости
     public void Destroy()
     {
         if (deathHandled) return;
-        if (GetComponent<ShipHull>() != null)
+        if (GetComponent<ShipHull>() != null || (TryGetComponent<RtsNetworkUnit>(out var network) && network.IsSpawned))
         {
             Destroy((GameObject)null);
             return;

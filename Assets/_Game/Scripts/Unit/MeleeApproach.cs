@@ -38,14 +38,20 @@ public class MeleeApproach : MonoBehaviour
         foreach(var other in all)if(LiveClaim(other,enemy))claimed++;
         return claimed<capacity;
     }
-    private static bool ClearContact(Vector3 point,Transform enemy,NavMeshQueryFilter filter)
-        =>NavMesh.SamplePosition(enemy.position,out var floor,.5f,filter)&&!NavMesh.Raycast(point,floor.position,out _,filter);
-    public static bool CanStrike(GameObject actor,Transform enemy)
+    private static Vector3 GroundPosition(Transform body, NavMeshAgent feet)
+        => feet != null ? body.position - Vector3.up * feet.baseOffset : body.position;
+    private static bool ClearContact(Vector3 point,Vector3 enemy,NavMeshQueryFilter filter)
+        =>NavMesh.SamplePosition(enemy,out var floor,.5f,filter)&&!NavMesh.Raycast(point,floor.position,out _,filter);
+    public static bool CanStrike(GameObject actor,Transform enemy,float reach=float.PositiveInfinity)
     {
-        if(enemy.GetComponentInParent<Unit>()==null)return true;
+        var target=enemy.GetComponentInParent<Unit>();
+        if(target==null)return true;
         var agent=actor.GetComponent<NavMeshAgent>();
         if(agent==null||!agent.enabled||!agent.isOnNavMesh)return false;
-        return ClearContact(actor.transform.position,enemy,new NavMeshQueryFilter{agentTypeID=agent.agentTypeID,areaMask=agent.areaMask});
+        var from=GroundPosition(actor.transform,agent);
+        var to=GroundPosition(target.transform,target.GetComponent<NavMeshAgent>());
+        return (from-to).sqrMagnitude<=reach*reach
+            &&ClearContact(from,to,new NavMeshQueryFilter{agentTypeID=agent.agentTypeID,areaMask=agent.areaMask});
     }
     public static bool CanTarget(GameObject actor,Transform enemy,bool claim=false)
     {
@@ -57,31 +63,33 @@ public class MeleeApproach : MonoBehaviour
         if(unit==null)return true;
         if(unit.unitHealth<=0||!FactionMember.AreEnemies(actor,unit.gameObject))return false;
         enemy=unit.transform;
+        var enemyBody=enemy.GetComponent<NavMeshAgent>();
+        var enemyPoint=GroundPosition(enemy,enemyBody);
+        var actorPoint=GroundPosition(actor.transform,body);
         var approach=actor.GetComponent<MeleeApproach>();if(approach==null)approach=actor.AddComponent<MeleeApproach>();
         if(!approach.HasCapacity(enemy,ac.meleeRange))return false;
         if(claim&&approach.target==enemy&&approach.reserved&&approach.front
-            &&Vector3.Distance(approach.slot,enemy.position)<=ac.meleeRange&&CanStrike(actor,enemy))return true;
+            &&Vector3.Distance(approach.slot,enemyPoint)<=ac.meleeRange&&CanStrike(actor,enemy))return true;
         bool holding=BattleCombatant.Defends(ac)||MilitaryOrders.BlocksChase(ac)||WallStation.Holding(ac);
         var filter=new NavMeshQueryFilter{agentTypeID=body.agentTypeID,areaMask=body.areaMask};
-        Vector3 bestPoint=actor.transform.position;float best=float.PositiveInfinity;bool found=false;
-        var enemyBody=enemy.GetComponent<NavMeshAgent>();
+        Vector3 bestPoint=actorPoint;float best=float.PositiveInfinity;bool found=false;
         float radius=Mathf.Max(body.radius+(enemyBody!=null?enemyBody.radius:.5f)+.1f,ac.meleeRange*.75f);
-        float currentDistance=Vector3.Distance(actor.transform.position,enemy.position);
+        float currentDistance=Vector3.Distance(actorPoint,enemyPoint);
         if(currentDistance>=body.radius+(enemyBody!=null?enemyBody.radius:.5f)+.05f&&currentDistance<=ac.meleeRange
-            &&approach.Free(actor.transform.position,body.radius*2+.15f,enemy)&&ClearContact(actor.transform.position,enemy,filter))
+            &&approach.Free(actorPoint,body.radius*2+.15f,enemy)&&ClearContact(actorPoint,enemyPoint,filter))
         {
-            if(claim){approach.target=enemy;approach.slot=actor.transform.position;approach.front=true;approach.reserved=true;}
+            if(claim){approach.target=enemy;approach.slot=actorPoint;approach.front=true;approach.reserved=true;}
             return true;
         }
         int count=Mathf.Max(4,Mathf.FloorToInt(2*Mathf.PI*radius/(body.radius*2+.15f)));
         for(int i=0;i<(holding?1:count);i++)
         {
             float angle=2*Mathf.PI*i/count;
-            var p=holding?actor.transform.position:enemy.position+new Vector3(Mathf.Cos(angle),0,Mathf.Sin(angle))*radius;
-            if(holding&&Vector3.Distance(p,enemy.position)>ac.meleeRange)continue;
+            var p=holding?actorPoint:enemyPoint+new Vector3(Mathf.Cos(angle),0,Mathf.Sin(angle))*radius;
+            if(holding&&Vector3.Distance(p,enemyPoint)>ac.meleeRange)continue;
             if(!NavMesh.SamplePosition(p,out var hit,.3f,filter)||!approach.Free(hit.position,body.radius*2+.15f,enemy))continue;
-            if(!ClearContact(hit.position,enemy,filter))continue;
-            float score=(actor.transform.position-hit.position).sqrMagnitude;if(score>=best)continue;
+            if(!ClearContact(hit.position,enemyPoint,filter))continue;
+            float score=(actorPoint-hit.position).sqrMagnitude;if(score>=best)continue;
             var path=new NavMeshPath();if(!body.CalculatePath(hit.position,path)||path.status!=NavMeshPathStatus.PathComplete)continue;
             best=score;bestPoint=hit.position;found=true;
         }
@@ -98,7 +106,8 @@ public class MeleeApproach : MonoBehaviour
         var root=attack.gameObject;
         if(root.GetComponent<Archer>()!=null||BattleCombatant.Defends(actor)||MilitaryOrders.BlocksChase(actor)||WallStation.Holding(actor))return false;
         var worker=root.GetComponent<ResourcesMove>();
-        if(root.GetComponent<EnemyAi>()==null&&(worker==null||worker.role!=ResourcesMove.UnitRole.Soldier))return false;
+        if(root.GetComponent<EnemyAi>()==null&&(worker==null||worker.role!=ResourcesMove.UnitRole.Soldier)
+            &&root.GetComponent<RtsNetworkUnit>()?.IsMeleeFighter!=true)return false;
         var target=attack.targetToAttack.GetComponentInParent<Unit>();
         if(target==null||target.unitHealth<=0||!FactionMember.AreEnemies(root,target.gameObject))return false;
         var order=root.GetComponent<GOScript>();if(order!=null&&order.isCommandToMove)return false;
@@ -127,32 +136,33 @@ public class MeleeApproach : MonoBehaviour
         agent.stoppingDistance=Mathf.Min(.1f,savedStopping);
         if(target!=enemy){target=enemy;reserved=false;nextPlan=0;}
         var enemyAgent=enemy.GetComponent<NavMeshAgent>();
+        var enemyPoint=GroundPosition(enemy,enemyAgent);
+        var actorPoint=GroundPosition(transform,agent);
         float contact=agent.radius+(enemyAgent!=null?enemyAgent.radius:.5f)+.05f;
-        float distanceToEnemy=Vector3.Distance(transform.position,enemy.position);
+        float distanceToEnemy=Vector3.Distance(actorPoint,enemyPoint);
         bool capacity=HasCapacity(enemy,reach);
-        if(capacity&&distanceToEnemy>=contact&&distanceToEnemy<=reach&&Free(transform.position,agent.radius*2+.15f)&&CanStrike(gameObject,enemy))
+        var filter=new NavMeshQueryFilter{agentTypeID=agent.agentTypeID,areaMask=agent.areaMask};
+        if(capacity&&distanceToEnemy>=contact&&distanceToEnemy<=reach&&Free(actorPoint,agent.radius*2+.15f)&&ClearContact(actorPoint,enemyPoint,filter))
         {
             // Уже подошедшие противники дерутся на месте, вместо взаимного обхода по кругу.
-            reserved=true;front=true;slot=transform.position;ready=true;
+            reserved=true;front=true;slot=actorPoint;ready=true;
             if(agent.hasPath)agent.ResetPath();return true;
         }
         if(Time.time>=nextPlan)
         {
             nextPlan=Time.time+.5f;bool hadSlot=reserved;reserved=false;
-            var body=enemy.GetComponent<NavMeshAgent>();
-            float radius=Mathf.Max(agent.radius+(body!=null?body.radius:.5f)+.1f,reach*.75f);
+            float radius=Mathf.Max(agent.radius+(enemyAgent!=null?enemyAgent.radius:.5f)+.1f,reach*.75f);
             float spacing=agent.radius*2+.15f;
             int count=Mathf.Max(4,Mathf.FloorToInt(2*Mathf.PI*radius/spacing));
-            float best=float.PositiveInfinity;Vector3 bestPoint=transform.position;bool found=false,bestFront=false;
-            var filter=new NavMeshQueryFilter{agentTypeID=agent.agentTypeID,areaMask=agent.areaMask};
+            float best=float.PositiveInfinity;Vector3 bestPoint=actorPoint;bool found=false,bestFront=false;
             // Сначала заполняется ближнее кольцо; очередь не проталкивается к центру цели.
             for(int ring=capacity?0:1;ring<3&&!found;ring++)for(int i=0;i<count;i++)
             {
                 float angle=2*Mathf.PI*i/count;
-                var point=enemy.position+new Vector3(Mathf.Cos(angle),0,Mathf.Sin(angle))*(radius+ring*spacing);
+                var point=enemyPoint+new Vector3(Mathf.Cos(angle),0,Mathf.Sin(angle))*(radius+ring*spacing);
                 if(!NavMesh.SamplePosition(point,out var hit,.3f,filter)||!Free(hit.position,spacing))continue;
-                if(ring==0&&!ClearContact(hit.position,enemy,filter))continue;
-                float distance=(transform.position-hit.position).sqrMagnitude;
+                if(ring==0&&!ClearContact(hit.position,enemyPoint,filter))continue;
+                float distance=(actorPoint-hit.position).sqrMagnitude;
                 // Не переставляем уже подошедшего бойца на противоположную сторону цели.
                 if(hadSlot)distance+=(hit.position-slot).sqrMagnitude;
                 if(distance>=best)continue;
@@ -162,8 +172,8 @@ public class MeleeApproach : MonoBehaviour
             reserved=found;slot=bestPoint;front=bestFront;
         }
         if(!reserved){if(agent.hasPath)agent.ResetPath();return true;}
-        float remaining=Vector3.Distance(transform.position,slot);
-        ready=front&&capacity&&remaining<.45f&&Vector3.Distance(transform.position,target.position)<=reach&&CanStrike(gameObject,enemy);
+        float remaining=Vector3.Distance(actorPoint,slot);
+        ready=front&&capacity&&remaining<.45f&&distanceToEnemy<=reach&&ClearContact(actorPoint,enemyPoint,filter);
         if(remaining<.25f||ready){if(agent.hasPath)agent.ResetPath();return true;}
         if(Time.time>=nextPath)
         {nextPath=Time.time+.35f;agent.isStopped=false;agent.SetDestination(slot);}

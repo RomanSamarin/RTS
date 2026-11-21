@@ -58,6 +58,7 @@ public class ResourcesMove : MonoBehaviour
     // добытые ресурсы именно сюда, а не в ближайшее здание того же типа.
     [SerializeField] private GameObject assignedWorkplace;
     private bool returningToWorkplace;
+    private float nextWorkplacePathAt;
     public bool IsReturningToWorkplace => returningToWorkplace;
     public void CompleteWorkplaceReturn() { returningToWorkplace = false; }
     public bool IsDeliveringResources => hasResourcesInPocket;
@@ -129,6 +130,7 @@ public class ResourcesMove : MonoBehaviour
         if (newRole == UnitRole.Shipwright && workplace != null && workplace.GetComponent<Shipyard>() == null)
             workplace.AddComponent<Shipyard>();
         returningToWorkplace = newRole != UnitRole.Villager && workplace != null;
+        nextWorkplacePathAt = 0;
 
         // Старые цели (дерево, склад, стройка) больше не актуальны.
         if (attackController != null)
@@ -153,6 +155,7 @@ public class ResourcesMove : MonoBehaviour
         if(workplace!=null&&!FactionMember.CanUse(gameObject,workplace))return;
         assignedWorkplace = workplace;
         returningToWorkplace = role != UnitRole.Villager && workplace != null;
+        nextWorkplacePathAt = 0;
     }
 
     /// <summary>Снимает привязку к зданию.</summary>
@@ -245,6 +248,9 @@ public class ResourcesMove : MonoBehaviour
                 if (role == UnitRole.Fisher) GoToFishHouse();
                 if (role == UnitRole.StoneMason) GoToStoneHouse();
             }
+            if ((role == UnitRole.Lumberjack || role == UnitRole.StoneMason)
+                && TryGetComponent<RtsNetworkUnit>(out var network) && network.IsSupplyWorker)
+                FollowNetworkDelivery();
             return;
         }
 
@@ -289,6 +295,16 @@ public class ResourcesMove : MonoBehaviour
 
             if (attackController != null && attackController.targetToAttack == null) FindAndGoToClosestStoneQuarry();
         }
+    }
+
+    private void FollowNetworkDelivery()
+    {
+        var target = attackController != null ? attackController.targetToAttack : null;
+        if (target == null || _agent == null || !_agent.enabled || !_agent.isOnNavMesh || Time.time < nextWorkplacePathAt) return;
+        nextWorkplacePathAt = Time.time + .5f;
+        if (!BuildingRoadAccess.TryWorkplacePath(target.gameObject, _agent, out var path, out _)) return;
+        _agent.isStopped = false;
+        _agent.SetPath(path);
     }
 
     public void SetInventoryFull()
@@ -368,6 +384,9 @@ public class ResourcesMove : MonoBehaviour
         if (BuildingEntrance.TryGetWorldPoint(target.gameObject, out Vector3 doorPoint))
             return doorPoint;
 
+        if (target.TryGetComponent<BuildingRoadAccess>(out var access) && access.TryConnectionPoint(out var approach, out _))
+            return approach;
+
         return target.position;
     }
 
@@ -419,8 +438,11 @@ public class ResourcesMove : MonoBehaviour
     /// <summary>Возвращает свободного рабочего к зданию, где его наняли.</summary>
     public void ReturnToWorkplace()
     {
-        if (assignedWorkplace != null && !IsAtDeliveryPoint(assignedWorkplace, stopNearBuildingDistance))
+        if (!returningToWorkplace && assignedWorkplace != null && !IsAtDeliveryPoint(assignedWorkplace, stopNearBuildingDistance))
+        {
             returningToWorkplace = true;
+            nextWorkplacePathAt = 0;
+        }
     }
 
     private bool TryReturnToWorkplace()
@@ -436,13 +458,28 @@ public class ResourcesMove : MonoBehaviour
             StopFollowingTarget();
             return true;
         }
-        if (IsAtDeliveryPoint(assignedWorkplace, stopNearBuildingDistance))
+        if ((_goScript != null && _goScript.HasPlayerOrder) || BattleCombatant.BlocksActions(this)) return true;
+        if (_agent == null || !_agent.enabled || !_agent.isOnNavMesh) return true;
+        if (Time.time < nextWorkplacePathAt) return true;
+        nextWorkplacePathAt = Time.time + .5f;
+        if (!BuildingRoadAccess.TryWorkplacePath(assignedWorkplace, _agent, out var path, out var destination))
+        {
+            StopFollowingTarget();
+            return true;
+        }
+        if (Vector3.Distance(_agent.nextPosition, destination) <= Mathf.Max(.5f, _agent.stoppingDistance + .15f))
         {
             StopFollowingTarget();
             returningToWorkplace = false;
             return true;
         }
-        SetTarget(assignedWorkplace.transform);
+        if (attackController != null) attackController.targetToAttack = null;
+        if (!_agent.hasPath || _agent.isStopped || _agent.pathStatus != NavMeshPathStatus.PathComplete ||
+            (_agent.destination - destination).sqrMagnitude > .04f)
+        {
+            _agent.isStopped = false;
+            _agent.SetPath(path);
+        }
         return true;
     }
 
@@ -708,7 +745,7 @@ public class ResourcesMove : MonoBehaviour
 
     private bool IsNearWall(GameObject building, float wallDistance)
     {
-        Collider targetCollider = building.GetComponent<Collider>();
+        Collider targetCollider = BuildingRoadAccess.SolidBody(building);
         if (targetCollider == null)
             return Vector3.Distance(transform.position, building.transform.position) <= wallDistance;
 

@@ -189,7 +189,8 @@ public class SoldiersFormation : MonoBehaviour
 
     private void Update()
     {
-        if (SettingsMenu.BlocksWorldInput || Barracks.BlocksWorldInput || RoadBuilder.BlocksWorldInput) return;
+        if (SettingsMenu.BlocksWorldInput || Barracks.BlocksWorldInput || RoadBuilder.BlocksWorldInput
+            || RtsNetworkConstruction.BlocksWorldInput) return;
         if (toggleKey != KeyCode.None && Input.GetKeyDown(toggleKey))
         {
             TogglePlacement();
@@ -209,7 +210,7 @@ public class SoldiersFormation : MonoBehaviour
         HandleRotation();
 
         // Без выделенных юнитов строить нечего
-        if (ManagerGO.Instance == null || ManagerGO.Instance.unitsSelected.Count == 0)
+        if (ManagerGO.Instance == null || !ManagerGO.Instance.unitsSelected.Exists(CanPlaceUnit))
         {
             SetPreviewVisible(false);
             return;
@@ -217,9 +218,10 @@ public class SoldiersFormation : MonoBehaviour
 
         SetPreviewVisible(true);
         EnsurePointsFor(ManagerGO.Instance.unitsSelected);
-        FollowCursor();
+        bool hasGround = FollowCursor();
 
-        if (placeOnLeftClick && Input.GetMouseButtonDown(0) && !IsPointerOverUI())
+        if (placeOnLeftClick && Input.GetMouseButtonDown(0) && !IsPointerOverUI()
+            && (!RtsNetworkSession.BlocksOfflineCommands || hasGround))
             PlaceFormation();
     }
 
@@ -334,6 +336,13 @@ public class SoldiersFormation : MonoBehaviour
     /// <summary>Включить/выключить режим построения (можно вызывать из UI).</summary>
     public void SetPlacing(bool value)
     {
+        if (value && RtsNetworkSession.BlocksOfflineCommands)
+        {
+            if (RtsNetworkSession.Instance?.Ready != true || RtsNetworkConstruction.BlocksWorldInput
+                || RoadBuilder.BlocksWorldInput || SettingsMenu.BlocksWorldInput
+                || ManagerGO.Instance?.unitsSelected.Exists(CanPlaceUnit) != true) return;
+            ManagerGO.Instance.CancelMilitaryTargetSelection();
+        }
         placing = value;
         IsPlacing = value;
         exitRequested = false;
@@ -452,7 +461,7 @@ public class SoldiersFormation : MonoBehaviour
         int count = 0;
         foreach (var unit in units)
         {
-            if (unit == null) continue;
+            if (!CanPlaceUnit(unit)) continue;
             selectedRankCounts[FormationRank(unit)]++;
             count++;
         }
@@ -515,6 +524,11 @@ public class SoldiersFormation : MonoBehaviour
         }
     }
 
+    private static bool CanPlaceUnit(GameObject unit)
+        => unit != null && (!RtsNetworkSession.BlocksOfflineCommands
+            || (unit.TryGetComponent<RtsNetworkUnit>(out var network) && network.IsSpawned
+                && network.IsMeleeFighter && FactionMember.IsPlayer(unit)));
+
     private List<Vector3> BuildRankLayout(int count)
     {
         var rowSizes = new List<int>();
@@ -574,17 +588,18 @@ public class SoldiersFormation : MonoBehaviour
     }
 
     /// <summary>Точки строя едут за курсором.</summary>
-    private void FollowCursor()
+    private bool FollowCursor()
     {
         if (cam == null || formationRoot == null)
-            return;
+            return false;
 
         Ray ray = cam.ScreenPointToRay(Input.mousePosition);
         if (!Physics.Raycast(ray, out RaycastHit hit, Mathf.Infinity, ground, QueryTriggerInteraction.Ignore))
-            return;
+            return false;
 
         Vector3 offset = centerOnCursor ? formationRoot.rotation * localCenter : Vector3.zero;
         formationRoot.position = hit.point - offset;
+        return true;
     }
 
     /// <summary>Поворот строя: удержание Q/E и колесо мыши.</summary>
@@ -624,36 +639,45 @@ public class SoldiersFormation : MonoBehaviour
     }
 
     /// <summary>Раскладывает выделенных юнитов по точкам строя.</summary>
-    private void PlaceFormation()
+    internal bool PlaceFormationAt(Vector3 center, float yaw)
+    {
+        if (!placing || formationRoot == null) return false;
+        EnsurePointsForSelection();
+        formationRoot.rotation = Quaternion.Euler(0, yaw, 0);
+        formationRoot.position = center - (centerOnCursor ? formationRoot.rotation * localCenter : Vector3.zero);
+        return PlaceFormation();
+    }
+
+    private bool PlaceFormation()
     {
         if (formationRoot == null)
         {
             Debug.LogWarning($"[SoldiersFormation] Не назначен formationRoot у \"{name}\".", this);
-            return;
+            return false;
         }
 
         List<GameObject> units = ManagerGO.Instance.unitsSelected;
         if (units == null || units.Count == 0)
-            return;
+            return false;
 
         RefreshActivePoints();
 
         if (activePoints.Count == 0)
         {
             Debug.LogWarning($"[SoldiersFormation] У \"{formationRoot.name}\" нет точек строя.", this);
-            return;
+            return false;
         }
 
         List<GameObject> validUnits = new List<GameObject>();
 
         foreach (GameObject unit in units)
         {
-            if (unit != null && !validUnits.Contains(unit))
+            if (CanPlaceUnit(unit) && !validUnits.Contains(unit))
                 validUnits.Add(unit);
         }
 
         if (validUnits.Count == 0)
-            return;
+            return false;
 
         // Сначала готовим безопасные точки: на NavMesh и не ближе
         // minDestinationSpacing друг к другу.
@@ -662,16 +686,24 @@ public class SoldiersFormation : MonoBehaviour
         if (destinations.Count == 0)
         {
             Debug.LogWarning("[SoldiersFormation] Не удалось подобрать точки назначения.", this);
-            return;
+            return false;
         }
 
         List<UnitOrder> orders = BuildOrders(validUnits, destinations);
 
-        if (orders.Count > 0)
-            StartIssuingOrders(orders);
+        if (orders.Count == 0) return false;
+        if (RtsNetworkSession.BlocksOfflineCommands)
+        {
+            var session = RtsNetworkSession.Instance;
+            if (!session.Ready || orders.Count > RtsNetworkSession.MaxFormationUnits) return false;
+            session.RequestFormation(orders.Select(order => order.Unit.GetComponent<RtsNetworkUnit>().EntityId).ToArray(),
+                orders.Select(order => order.Destination).ToArray(), formationRoot.forward);
+        }
+        else StartIssuingOrders(orders);
 
         if (exitAfterPlacement)
             RequestExit();
+        return true;
     }
 
     private void RefreshActivePoints()

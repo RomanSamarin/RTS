@@ -70,6 +70,7 @@ public class Builder : MonoBehaviour
     private ConstructionSite orderedSite;
     private bool hasBuildOrder;
     public ConstructionSite OrderedSite=>hasBuildOrder?orderedSite:null;
+    public bool HasConstructionTask => currentSite != null;
     private BuildingHealth repairTarget;
     private Vector3 repairPoint;
     private int repairMoveToken;
@@ -157,6 +158,7 @@ public class Builder : MonoBehaviour
 
     private void Start()
     {
+        if (TryGetComponent<RtsNetworkUnit>(out _)) return;
         // Строитель может быть добавлен позже Unit.Start (через роль в ResourcesMove),
         // поэтому на всякий случай гарантируем, что он попадёт в список выделения.
         if (ManagerGO.Instance != null && ManagerGO.Instance.allUnitsList != null &&

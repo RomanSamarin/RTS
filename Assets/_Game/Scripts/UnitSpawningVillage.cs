@@ -12,6 +12,7 @@ public class UnitSpawningVillage : MonoBehaviour
     public float TimeToSpawn = 3f;
     public GameObject UnitToSpawn;
     public bool TimeToSpawnUnitInVillage;
+    [SerializeField] private Faction owner = Faction.Player;
 
     private const float ArriveDistance = 2f;
     private const float MinMoveTime = 0.25f;
@@ -59,9 +60,11 @@ public class UnitSpawningVillage : MonoBehaviour
             Debug.LogWarning($"[Village] {name}: рядом с точкой спавна нет NavMesh", this);
         }
 
-        targetHouse = HousesScript.FindHouseWithFreePlace(spawnPosition);
+        if (!FactionRules.IsPlayerSide(owner)) yield break;
+        targetHouse = HousesScript.FindHouseWithFreePlace(spawnPosition, owner);
         if (targetHouse == null) yield break;
         spawnedUnit = Instantiate(UnitToSpawn, spawnPosition, point.rotation);
+        FactionMember.Set(spawnedUnit, owner);
         SaveGameManager.Stamp(spawnedUnit,UnitToSpawn);
         // Резервируем жильё до первого yield.
         if (!targetHouse.TrySettle(spawnedUnit))
@@ -273,7 +276,7 @@ public class UnitSpawningVillage : MonoBehaviour
         if (attack == null)
             attack = unit.AddComponent<AttackController>();
 
-        FactionMember.Set(unit,Faction.Player);
+        FactionMember.Set(unit, owner);
         attack.targetToAttack = null;
 
         ResourcesMove move = unit.GetComponent<ResourcesMove>();

@@ -32,7 +32,7 @@ public class ArmyGroup : MonoBehaviour
     public event System.Action<string> WarningChanged;
     private float nextWarning;
     private Vector3 lastAnchor;
-    private void Awake() { if(FactionMember.Find(gameObject)==null)FactionMember.Set(gameObject,Faction.Player);lastAnchor = transform.position; }
+    private void Awake() { if(FactionMember.Find(gameObject)==null)FactionMember.Set(gameObject,FactionMember.LocalPlayer);lastAnchor = transform.position; }
     private void OnEnable() { if (supplyCart != null) AssignCart(supplyCart); }
     public bool AddSoldier(GameObject soldier)
     {

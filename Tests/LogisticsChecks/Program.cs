@@ -9,6 +9,7 @@ class Program
     static void Main()
     {
         FactionChecks.Run();
+        NetworkPlayerChecks.Run();
         HospitalChecks.Run();
         ArmyRejoinChecks.Run();
         MeleeCombatChecks.Run();

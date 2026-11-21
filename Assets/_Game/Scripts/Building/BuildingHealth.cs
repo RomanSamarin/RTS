@@ -40,7 +40,8 @@ public class BuildingHealth : MonoBehaviour
     private void Awake()
     {
         FactionMember.Ensure(gameObject);
-        BuildingRoadAccess.Ensure(gameObject);
+        // Network construction already tracks road access on its host-side workplace.
+        if (GetComponent<RtsNetworkBuildSite>() == null) BuildingRoadAccess.Ensure(gameObject);
         if (currentHealth < 0f)
             currentHealth = maxHealth;
     }

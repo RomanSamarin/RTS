@@ -35,7 +35,7 @@ public class SelectedMilitaryCommandPanel : MonoBehaviour
     }
 
     private static bool CanIssue => !SaveGameManager.IsLoading && !SoldiersFormation.IsPlacing
-        && !Barracks.BlocksWorldInput && !RoadBuilder.BlocksWorldInput
+        && !Barracks.BlocksWorldInput && !RoadBuilder.BlocksWorldInput && !RtsNetworkConstruction.BlocksWorldInput
         && !(PlacementSystem.Instance?.BlocksUnitInput ?? false);
 
     private void Attack() { if (CanIssue) ManagerGO.Instance?.BeginAttackMove(); }
@@ -49,12 +49,15 @@ public class SelectedMilitaryCommandPanel : MonoBehaviour
     {
         var manager = ManagerGO.Instance;
         bool soldiers = false, defenders = false, siege = false, ships = false, ladderCarts = false, rams = false;
+        bool networkFighters = false;
         if (manager != null && !SaveGameManager.IsLoading)
         {
             foreach (var selected in manager.unitsSelected)
             {
                 if (selected == null || !selected.TryGetComponent<Unit>(out var unit)
                     || !unit.isActiveAndEnabled || unit.unitHealth <= 0f) continue;
+                networkFighters |= selected.TryGetComponent<RtsNetworkUnit>(out var networkUnit)
+                    && networkUnit.IsSpawned && networkUnit.IsMeleeFighter;
                 if (selected.TryGetComponent<ResourcesMove>(out var worker) && worker.role == ResourcesMove.UnitRole.Soldier
                     && selected.GetComponent<GOScript>() != null)
                 {
@@ -69,14 +72,14 @@ public class SelectedMilitaryCommandPanel : MonoBehaviour
             }
         }
 
-        bool show = soldiers || siege || ships || ladderCarts || rams;
+        bool show = soldiers || siege || ships || ladderCarts || rams || networkFighters;
         if (panelRoot != null && panelRoot != gameObject) panelRoot.SetActive(show);
         bool available = show && CanIssue;
-        if (attackButton != null) attackButton.interactable = available && (soldiers || siege);
-        if (holdButton != null) holdButton.interactable = available && (soldiers || siege || ships);
-        if (patrolButton != null) patrolButton.interactable = available && soldiers;
-        if (retreatButton != null) retreatButton.interactable = available && (soldiers || siege || ships);
-        if (faceDefenseButton != null) faceDefenseButton.interactable = available && defenders;
+        if (attackButton != null) attackButton.interactable = available && (soldiers || siege || networkFighters);
+        if (holdButton != null) holdButton.interactable = available && (soldiers || siege || ships || networkFighters);
+        if (patrolButton != null) patrolButton.interactable = available && (soldiers || networkFighters);
+        if (retreatButton != null) retreatButton.interactable = available && (soldiers || siege || ships || networkFighters);
+        if (faceDefenseButton != null) faceDefenseButton.interactable = available && (defenders || networkFighters);
         if (stopButton != null) stopButton.interactable = available;
         if (hintText != null) hintText.text = show ? Hint(manager, ships) : "";
     }

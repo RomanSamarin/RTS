@@ -396,6 +396,7 @@ public sealed class SaveWorldSnapshot
             }
         }
         RebuildUnitRegistries();
+        HousesScript.RefreshLocalHousing();
         CarrierTask.RebuildSavedReservations();
         PlacementSystem.Instance?.RestoreSavedPlacementHooks();
         foreach(var village in UnityEngine.Object.FindObjectsOfType<UnitSpawningVillage>())village.RestoreSavedSpawning();

@@ -15,9 +15,12 @@ public class Farmer : MonoBehaviour
     private AttackController attack;
     [field: SerializeField] public bool isWorking { get; private set; }
     private FarmField field;
+    private FarmField dedicatedField;
     private bool delivering;
     public string CurrentTask => delivering ? "Доставить" : field != null ? "Собирать урожай" : "Искать работу";
     private float nextSearch;
+
+    internal void AssignField(FarmField value) => dedicatedField = value;
 
     private void Awake()
     {
@@ -75,6 +78,7 @@ public class Farmer : MonoBehaviour
                 foreach (FarmField candidate in FarmField.All)
                 {
                     if (candidate == null || !candidate.IsRipe) continue;
+                    if (dedicatedField != null && candidate != dedicatedField) continue;
                     float distance = (candidate.WorkPosition - transform.position).sqrMagnitude;
                     if (distance >= best) continue;
                     var path = new NavMeshPath();

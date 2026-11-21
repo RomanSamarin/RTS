@@ -35,6 +35,7 @@ public class BattleCombatant : MonoBehaviour
         && (command == null || !command.HasPlayerOrder) && !UnitEat.ControlsMovement(this);
     public bool Cohesive => Holding && coherent;
     public float SpeedMultiplier => effects.SpeedFactor(Time.time);
+    internal float NaturalSpeed => fallbackSpeed * SpeedMultiplier;
     public float AttackRateMultiplier => effects.AttackRateFactor(Time.time);
     public float DamageMultiplier => effects.DamageFactor(Time.time);
     public string Status => IsStunned ? "Оглушён" : IsDisordered ? "Строй расстроен" : IsFatigued ? "Усталость после натиска"
@@ -47,6 +48,7 @@ public class BattleCombatant : MonoBehaviour
         if (obj == null) return TroopType.Auto;
         var profile = obj.GetComponent<TroopCombat>();
         if (profile != null && profile.troopType != TroopType.Auto) return profile.troopType;
+        if (obj.TryGetComponent<RtsNetworkUnit>(out var network) && network.IsCombatUnit) return network.MilitaryType;
         if (obj.GetComponent<Archer>() != null) return TroopType.Archer;
         var worker = obj.GetComponent<ResourcesMove>();
         if (worker == null || worker.role != ResourcesMove.UnitRole.Soldier) return TroopType.Auto;
@@ -101,7 +103,7 @@ public class BattleCombatant : MonoBehaviour
     {
         if(SaveGameManager.IsLoading)return;
         if (!Alive || agent == null || !agent.enabled || !agent.isOnNavMesh) return;
-        if (command == null) agent.speed = fallbackSpeed * SpeedMultiplier;
+        if (command == null) agent.speed = SquadMember.Speed(gameObject, NaturalSpeed);
         if (IsStunned || Time.time < pushUntil)
         {
             if (!ownsStop) { ownsStop = true; savedStopped = agent.isStopped; }
@@ -134,7 +136,7 @@ public class BattleCombatant : MonoBehaviour
         {
             RestoreRegroupDistance();
             if (Kind != TroopType.Cavalry) agent.ResetPath();
-            if (!Holding) { ReleaseRotation(); return; }
+            if (!Holding && GetComponent<RtsNetworkUnit>()?.IsHoldingPosition != true) { ReleaseRotation(); return; }
             agent.ResetPath();
             if (Kind != TroopType.Archer)
             {

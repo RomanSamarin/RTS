@@ -64,17 +64,26 @@ public class ManagerGO : MonoBehaviour
     {IsChoosingPatrol=false;patrolPoints.Clear();patrolUnits.Clear();}
     public void BeginPatrol()
     {
+        bool networked = RtsNetworkSession.BlocksOfflineCommands;
+        if (networked && !CanIssueNetworkGroundOrder()) return;
         CancelPatrolSelection();IsChoosingRetreat=false;IsChoosingAttackMove=false;IsChoosingDefenseFacing=false;
         foreach(var selected in unitsSelected)
         {
             var unit=ControllableRoot(selected);
-            if(unit!=null&&!patrolUnits.Contains(unit)&&MilitaryOrders.Ensure(unit)!=null)patrolUnits.Add(unit);
+            if (unit == null || patrolUnits.Contains(unit)) continue;
+            if (networked ? unit.GetComponent<RtsNetworkUnit>()?.IsMeleeFighter == true : MilitaryOrders.Ensure(unit) != null)
+                patrolUnits.Add(unit);
         }
         IsChoosingPatrol=patrolUnits.Count>0;
         MilitaryDebug(IsChoosingPatrol?"Патруль: задайте минимум две точки ЛКМ. Shift+ЛКМ добавляет промежуточную точку, обычный ЛКМ завершает маршрут.":"Выберите солдат для патруля.");
     }
     private void CompletePatrol()
     {
+        if (RtsNetworkSession.BlocksOfflineCommands)
+        {
+            IssueNetworkPatrol(patrolPoints.ToArray());
+            return;
+        }
         int columns=Mathf.Max(1,Mathf.CeilToInt(Mathf.Sqrt(patrolUnits.Count)));
         int rows=Mathf.CeilToInt((float)patrolUnits.Count/columns);
         float spacing=groupSpacing;
@@ -99,9 +108,11 @@ public class ManagerGO : MonoBehaviour
     }
     public void BeginRetreat()
     {
+        bool networked = RtsNetworkSession.BlocksOfflineCommands;
+        if (networked && !CanIssueNetworkGroundOrder()) return;
         CancelPatrolSelection();
         IsChoosingAttackMove=false;IsChoosingDefenseFacing=false;
-        IsChoosingRetreat=unitsSelected.Count>0;
+        IsChoosingRetreat=networked ? HasNetworkFightersSelected() : unitsSelected.Count>0;
         if (!IsChoosingRetreat) MilitaryDebug("Не выбраны войска или корабли для отступления.");
         else if (ShipNavigation.SelectedShips(unitsSelected).Count > 0)
             MilitaryDebug("Отступление флота: укажите точку ЛКМ по воде.");
@@ -109,6 +120,11 @@ public class ManagerGO : MonoBehaviour
     }
     public void RetreatSelectedTo(Vector3 destination)
     {
+        if (RtsNetworkSession.BlocksOfflineCommands)
+        {
+            IssueNetworkRetreat(destination);
+            return;
+        }
         var troops=new List<GameObject>();float spacing=groupSpacing;
         foreach(var selected in unitsSelected)
         {
@@ -134,13 +150,21 @@ public class ManagerGO : MonoBehaviour
     }
     public void BeginDefenseFacing()
     {
+        bool networked = RtsNetworkSession.BlocksOfflineCommands;
+        if (networked && !CanIssueNetworkGroundOrder()) return;
         CancelPatrolSelection();
         IsChoosingRetreat=false;
-        IsChoosingAttackMove=false;IsChoosingDefenseFacing=unitsSelected.Count>0;
+        IsChoosingAttackMove=false;
+        IsChoosingDefenseFacing=networked ? HasNetworkFightersSelected() : unitsSelected.Count>0;
         MilitaryDebug(IsChoosingDefenseFacing?"Укажите ЛКМ направление обороны щитоносцев и копейщиков.":"Не выбраны бойцы для поворота обороны.");
     }
     public void FaceDefenseAt(Vector3 point)
     {
+        if (RtsNetworkSession.BlocksOfflineCommands)
+        {
+            IssueNetworkDefenseFacing(point);
+            return;
+        }
         var defenders=new List<GameObject>();Vector3 center=Vector3.zero;
         foreach(var unit in unitsSelected)
         {
@@ -158,14 +182,18 @@ public class ManagerGO : MonoBehaviour
     }
     public void BeginAttackMove()
     {
+        if (RtsNetworkSession.BlocksOfflineCommands && !CanIssueNetworkGroundOrder()) return;
         CancelPatrolSelection();
         IsChoosingRetreat=false;
         IsChoosingDefenseFacing=false;
-        IsChoosingAttackMove=unitsSelected.Count>0;
+        IsChoosingAttackMove=RtsNetworkSession.BlocksOfflineCommands
+            ? HasNetworkFightersSelected()
+            : unitsSelected.Count>0;
         MilitaryDebug(IsChoosingAttackMove?$"Выбор точки атаки. Выделено: {unitsSelected.Count}. Нажмите ЛКМ по земле.":"Атака не начата: нет выделенных юнитов.");
     }
     public void HoldSelected()
     {
+        if (TryHandleNetworkStance(true)) return;
         CancelPatrolSelection();
         IsChoosingRetreat=false;
         IsChoosingDefenseFacing=false;
@@ -183,6 +211,7 @@ public class ManagerGO : MonoBehaviour
     }
     public void StopSelected()
     {
+        if (TryHandleNetworkStance(false)) return;
         CancelPatrolSelection();
         IsChoosingRetreat=false;
         IsChoosingDefenseFacing=false;
@@ -200,6 +229,21 @@ public class ManagerGO : MonoBehaviour
                 else MilitaryOrders.Ensure(unit)?.Stop();
             }
     }
+    private bool TryHandleNetworkStance(bool hold)
+    {
+        if (!RtsNetworkSession.BlocksOfflineCommands) return false;
+        CancelPatrolSelection();
+        IsChoosingAttackMove = IsChoosingRetreat = IsChoosingDefenseFacing = false;
+        foreach (var selected in unitsSelected)
+        {
+            var root = ControllableRoot(selected);
+            if (root == null || !root.TryGetComponent<RtsNetworkUnit>(out var unit)) continue;
+            if (hold) unit.RequestHold();
+            else unit.RequestStop();
+        }
+        return true;
+    }
+
     private bool HandleMilitaryInput(Ray ray,bool pointerOverUI)
     {
         var selected=EventSystem.current!=null?EventSystem.current.currentSelectedGameObject:null;
@@ -214,19 +258,7 @@ public class ManagerGO : MonoBehaviour
         if ((buttons == null || buttons.stopButton == null) && Input.GetKeyDown(stopOrderKey)) { StopSelected(); return true; }
         if ((buttons == null || buttons.attackButton == null) && Input.GetKeyDown(attackMoveKey)) BeginAttackMove();
         if ((buttons == null || buttons.faceDefenseButton == null) && Input.GetKeyDown(defenseFacingKey)) BeginDefenseFacing();
-        if(IsChoosingPatrol)
-        {
-            if(Input.GetKeyDown(KeyCode.Escape)||Input.GetMouseButtonDown(1)||unitsSelected.Count==0)
-            {CancelPatrolSelection();militaryInputEndedFrame=Time.frameCount;return true;}
-            if(!pointerOverUI&&Input.GetMouseButtonDown(0)&&Physics.Raycast(ray,out var patrolHit,Mathf.Infinity,Ground,QueryTriggerInteraction.Ignore))
-            {
-                if(patrolPoints.Count>0&&Vector3.Distance(patrolPoints[patrolPoints.Count-1],patrolHit.point)<1f)
-                {MilitaryDebug("Точки патруля слишком близки: выберите другое место.");return true;}
-                patrolPoints.Add(patrolHit.point);MilitaryDebug($"Точка патруля {patrolPoints.Count}: {patrolHit.point}.");
-                if(patrolPoints.Count>=2&&!Input.GetKey(KeyCode.LeftShift)&&!Input.GetKey(KeyCode.RightShift))CompletePatrol();
-            }
-            return true;
-        }
+        if (HandlePatrolSelection(ray, pointerOverUI)) return true;
         if(IsChoosingRetreat)
         {
             if(Input.GetKeyDown(KeyCode.Escape)||Input.GetMouseButtonDown(1)||unitsSelected.Count==0)
@@ -372,6 +404,7 @@ public class ManagerGO : MonoBehaviour
     private void Update()
     {
         if(SaveGameManager.IsLoading)return;
+        if (RtsNetworkSession.BlocksOfflineCommands) { UpdateNetworkInput(); return; }
         // Клавиатурное выделение не зависит от камеры, лучей и режима размещения.
         if (!SettingsMenu.BlocksWorldInput) HandleControlGroups();
         // Завершаем приказы на перемещение у всех юнитов (и выделенных, и нет),
@@ -502,6 +535,218 @@ public class ManagerGO : MonoBehaviour
             }
         }
             CursorSelector();
+    }
+
+    private void UpdateNetworkInput()
+    {
+        var session = RtsNetworkSession.Instance;
+        if (!session.Ready || SettingsMenu.BlocksWorldInput || RtsNetworkConstruction.BlocksWorldInput || RoadBuilder.BlocksWorldInput
+            || SoldiersFormation.IsPlacing) return;
+        HandleControlGroups();
+        var focused = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+        if (focused != null && ((focused.GetComponentInParent<TMPro.TMP_InputField>()?.isFocused ?? false)
+            || (focused.GetComponentInParent<UnityEngine.UI.InputField>()?.isFocused ?? false))) return;
+        var buttons = militaryCommandPanel != null && militaryCommandPanel.isActiveAndEnabled && !useMilitaryOrderHotkeys
+            ? militaryCommandPanel : null;
+        if ((buttons == null || buttons.holdButton == null) && Input.GetKeyDown(holdPositionKey)) { HoldSelected(); return; }
+        if ((buttons == null || buttons.stopButton == null) && Input.GetKeyDown(stopOrderKey)) { StopSelected(); return; }
+        if ((buttons == null || buttons.attackButton == null) && Input.GetKeyDown(attackMoveKey)) { BeginAttackMove(); return; }
+        if ((buttons == null || buttons.patrolButton == null) && Input.GetKeyDown(patrolKey)) { BeginPatrol(); return; }
+        if ((buttons == null || buttons.retreatButton == null) && Input.GetKeyDown(retreatKey)) { BeginRetreat(); return; }
+        if ((buttons == null || buttons.faceDefenseButton == null) && Input.GetKeyDown(defenseFacingKey)) { BeginDefenseFacing(); return; }
+        if (cam == null) cam = Camera.main;
+        bool pointerOverUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+        Ray? worldRay = cam != null ? cam.ScreenPointToRay(Input.mousePosition) : (Ray?)null;
+        if (HandlePatrolSelection(worldRay, pointerOverUI)) return;
+        if (IsChoosingAttackMove || IsChoosingRetreat || IsChoosingDefenseFacing)
+        {
+            if (Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1) || unitsSelected.Count == 0)
+            {
+                IsChoosingAttackMove = IsChoosingRetreat = IsChoosingDefenseFacing = false;
+                militaryInputEndedFrame = Time.frameCount;
+            }
+            else if (worldRay.HasValue && !pointerOverUI && Input.GetMouseButtonDown(0)
+                && Physics.Raycast(worldRay.Value, out var orderPoint, Mathf.Infinity, Ground, QueryTriggerInteraction.Ignore))
+            {
+                if (IsChoosingRetreat) IssueNetworkRetreat(orderPoint.point);
+                else if (IsChoosingDefenseFacing) FaceDefenseAt(orderPoint.point);
+                else IssueNetworkAttackMove(orderPoint.point);
+            }
+            return;
+        }
+        if (!worldRay.HasValue || pointerOverUI) return;
+        var ray = worldRay.Value;
+        if (Input.GetMouseButtonDown(0))
+        {
+            if (Physics.Raycast(ray, out var selected, Mathf.Infinity, clickable))
+            {
+                if (Input.GetKey(KeyCode.LeftShift)) MultiSelect(selected.collider.gameObject);
+                else SelectByClicking(selected.collider.gameObject);
+            }
+            else if (!Input.GetKey(KeyCode.LeftShift)) DeselectAll();
+        }
+        if (!Input.GetMouseButtonDown(1)) return;
+        if (Physics.Raycast(ray, out var hit, Mathf.Infinity, clickable | Ground, QueryTriggerInteraction.Ignore))
+        {
+            var target = hit.collider.GetComponentInParent<RtsNetworkUnit>();
+            if (target != null && target.IsSpawned && FactionMember.HasPlayerOwner(target.gameObject)
+                && target.PlayerId != session.LocalPlayerId
+                && unitsSelected.Exists(unit => unit != null && unit.GetComponentInParent<RtsNetworkUnit>()?.IsCombatUnit == true))
+            {
+                IssueNetworkAttack(target);
+                return;
+            }
+            var building = hit.collider.GetComponentInParent<RtsNetworkBuildSite>();
+            if (building != null && building.IsSpawned && building.IsComplete && building.PlayerId != session.LocalPlayerId
+                && unitsSelected.Exists(unit => unit != null && unit.GetComponentInParent<RtsNetworkUnit>()?.IsMeleeFighter == true))
+            {
+                IssueNetworkBuildingAttack(building);
+                return;
+            }
+        }
+        if (Physics.Raycast(ray, out var ground, Mathf.Infinity, Ground)) IssueNetworkMove(ground.point);
+    }
+
+    public void IssueNetworkAttack(RtsNetworkUnit target)
+    {
+        if (RtsNetworkSession.Instance == null || !RtsNetworkSession.Instance.Ready) return;
+        foreach (var selected in unitsSelected)
+        {
+            var root = ControllableRoot(selected);
+            if (root != null && root.TryGetComponent<RtsNetworkUnit>(out var unit)) unit.RequestAttack(target);
+        }
+    }
+
+    public void IssueNetworkBuildingAttack(RtsNetworkBuildSite target)
+    {
+        if (RtsNetworkSession.Instance?.Ready != true) return;
+        foreach (var selected in unitsSelected)
+        {
+            var root = ControllableRoot(selected);
+            if (root != null && root.TryGetComponent<RtsNetworkUnit>(out var unit)) unit.RequestBuildingAttack(target);
+        }
+    }
+
+    // Shared by ordinary RMB input and the runtime integration check.
+    public void IssueNetworkMove(Vector3 point) => IssueNetworkTravel(point, RtsNetworkUnit.TravelOrder.Move);
+
+    public void IssueNetworkAttackMove(Vector3 point)
+    {
+        if (!IsChoosingAttackMove || !CanIssueNetworkGroundOrder()) return;
+        IsChoosingAttackMove = false;
+        militaryInputEndedFrame = Time.frameCount;
+        IssueNetworkTravel(point, RtsNetworkUnit.TravelOrder.AttackMove);
+    }
+
+    public void IssueNetworkRetreat(Vector3 point)
+    {
+        if (!IsChoosingRetreat || !CanIssueNetworkGroundOrder()) return;
+        IsChoosingRetreat = false;
+        militaryInputEndedFrame = Time.frameCount;
+        IssueNetworkTravel(point, RtsNetworkUnit.TravelOrder.Retreat);
+    }
+
+    private bool HasNetworkFightersSelected()
+        => unitsSelected.Exists(selected => ControllableRoot(selected)?.GetComponent<RtsNetworkUnit>()?.IsMeleeFighter == true);
+
+    private void IssueNetworkDefenseFacing(Vector3 point)
+    {
+        if (!IsChoosingDefenseFacing || !CanIssueNetworkGroundOrder()) return;
+        IsChoosingDefenseFacing = false;
+        militaryInputEndedFrame = Time.frameCount;
+        var ids = new List<ulong>();
+        foreach (var selected in unitsSelected)
+        {
+            var root = ControllableRoot(selected);
+            if (root != null && root.TryGetComponent<RtsNetworkUnit>(out var unit) && unit.IsMeleeFighter
+                && !ids.Contains(unit.EntityId)) ids.Add(unit.EntityId);
+        }
+        RtsNetworkSession.Instance.RequestDefenseFacing(ids.ToArray(), point);
+    }
+
+    private static bool CanIssueNetworkGroundOrder() => RtsNetworkSession.Instance?.Ready == true
+        && !SettingsMenu.BlocksWorldInput && !RtsNetworkConstruction.BlocksWorldInput && !RoadBuilder.BlocksWorldInput
+        && !SoldiersFormation.IsPlacing;
+
+    internal void CancelMilitaryTargetSelection()
+    {
+        CancelPatrolSelection();
+        IsChoosingAttackMove = IsChoosingRetreat = IsChoosingDefenseFacing = false;
+    }
+
+    private bool HandlePatrolSelection(Ray? ray, bool pointerOverUI)
+    {
+        if (!IsChoosingPatrol) return false;
+        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetMouseButtonDown(1) || unitsSelected.Count == 0)
+        {
+            CancelPatrolSelection();
+            militaryInputEndedFrame = Time.frameCount;
+            return true;
+        }
+        if (!ray.HasValue || pointerOverUI || !Input.GetMouseButtonDown(0)
+            || !Physics.Raycast(ray.Value, out var hit, Mathf.Infinity, Ground, QueryTriggerInteraction.Ignore)) return true;
+        if (patrolPoints.Count > 0 && Vector3.Distance(patrolPoints[patrolPoints.Count - 1], hit.point) < 1f)
+        {
+            MilitaryDebug("Точки патруля слишком близки, выберите другое место.");
+            return true;
+        }
+        patrolPoints.Add(hit.point);
+        MilitaryDebug($"Точка патруля {patrolPoints.Count}: {hit.point}.");
+        bool addMore = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        if (patrolPoints.Count >= 2 && (!addMore
+            || (RtsNetworkSession.BlocksOfflineCommands && patrolPoints.Count == RtsNetworkUnit.MaxPatrolPoints))) CompletePatrol();
+        return true;
+    }
+
+    public void IssueNetworkPatrol(Vector3[] points)
+    {
+        if (!IsChoosingPatrol || !CanIssueNetworkGroundOrder() || points == null
+            || points.Length < 2 || points.Length > RtsNetworkUnit.MaxPatrolPoints) return;
+        int columns = Mathf.Max(1, Mathf.CeilToInt(Mathf.Sqrt(patrolUnits.Count)));
+        int rows = Mathf.CeilToInt((float)patrolUnits.Count / columns);
+        float spacing = Mathf.Max(1.5f, groupSpacing);
+        for (int i = 0; i < patrolUnits.Count; i++)
+        {
+            var root = ControllableRoot(patrolUnits[i]);
+            if (root == null || !root.TryGetComponent<RtsNetworkUnit>(out var unit)) continue;
+            var offset = new Vector3(i % columns - (columns - 1) * .5f, 0, i / columns - (rows - 1) * .5f) * spacing;
+            var route = new Vector3[points.Length];
+            for (int point = 0; point < points.Length; point++) route[point] = points[point] + offset;
+            unit.RequestPatrol(route);
+        }
+        CancelPatrolSelection();
+        militaryInputEndedFrame = Time.frameCount;
+    }
+
+    private void IssueNetworkTravel(Vector3 point, RtsNetworkUnit.TravelOrder order)
+    {
+        var session = RtsNetworkSession.Instance;
+        if (session?.Ready != true) return;
+        var units = new List<RtsNetworkUnit>();
+        foreach (var selected in unitsSelected)
+        {
+            var root = ControllableRoot(selected);
+            if (root != null && root.TryGetComponent<RtsNetworkUnit>(out var unit)
+                && (order == RtsNetworkUnit.TravelOrder.Move || unit.IsMeleeFighter)
+                && !units.Contains(unit)) units.Add(unit);
+        }
+        if (order == RtsNetworkUnit.TravelOrder.Move && units.Count >= 2)
+        {
+            int group = units[0].HeldFormationGroup;
+            if (group != 0 && units.TrueForAll(unit => unit.HeldFormationGroup == group))
+            {
+                session.RequestFormationMarch(units.ConvertAll(unit => unit.EntityId).ToArray(), point);
+                return;
+            }
+        }
+        int columns = Mathf.Max(1, Mathf.CeilToInt(Mathf.Sqrt(units.Count)));
+        int rows = Mathf.CeilToInt((float)units.Count / columns);
+        float rowCenter = order == RtsNetworkUnit.TravelOrder.Retreat ? (rows - 1) * .5f : 0f;
+        for (int i = 0; i < units.Count; i++)
+        {
+            var offset = new Vector3(i % columns - (columns - 1) * .5f, 0, i / columns - rowCenter) * Mathf.Max(1.5f, groupSpacing);
+            units[i].RequestTravel(point + offset, order);
+        }
     }
 
     private bool TryRamCrewOrder(Ray ray)
@@ -798,7 +1043,7 @@ public class ManagerGO : MonoBehaviour
     {
         int mask=attackable.value|clickable.value|LayerMask.GetMask("Building","Kazarma");
         return Physics.Raycast(ray,out hit,Mathf.Infinity,mask,QueryTriggerInteraction.Ignore)
-            && FactionMember.Of(hit.collider.gameObject)==Faction.Bandits;
+            && FactionRules.AreEnemies(FactionMember.LocalPlayer, FactionMember.Of(hit.collider.gameObject));
     }
     private static GameObject ControllableRoot(GameObject obj)
     {

@@ -82,7 +82,7 @@ public class HospitalPatient : MonoBehaviour
         }
         if(Time.time<nextSearch)return;nextSearch=Time.time+2;
         var worker=GetComponent<ResourcesMove>();
-        if(worker==null||worker.role!=ResourcesMove.UnitRole.Soldier||!FactionMember.IsPlayer(gameObject)
+        if(worker==null||worker.role!=ResourcesMove.UnitRole.Soldier||!FactionMember.HasPlayerOwner(gameObject)
             ||unit.unitHealth>=unit.unitMaxHealth||!agent.enabled||!agent.isOnNavMesh||PlayerOrder()||InCombat())return;
         if(food!=null&&food.IsBusy)return;
         Hospital best=null;Vector3 bestDoor=default;float distance=searchRadius;

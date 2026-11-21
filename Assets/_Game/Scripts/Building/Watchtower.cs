@@ -45,7 +45,7 @@ public class Watchtower : MonoBehaviour
     {
         if (SaveGameManager.IsLoading || Time.time < nextScanAt) return;
         nextScanAt = Time.time + Mathf.Max(.1f, scanInterval);
-        if (GetComponent<BuildingHealth>().IsDead || !FactionMember.IsPlayer(gameObject))
+        if (GetComponent<BuildingHealth>().IsDead || !FactionMember.HasPlayerOwner(gameObject))
         {
             Status = "Башня недоступна";
             ClearContacts();

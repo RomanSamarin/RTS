@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.UI;
 
 /// <summary>
@@ -75,6 +76,9 @@ public class WorkplaceHiring : MonoBehaviour
     private readonly List<ResourcesMove> workers = new List<ResourcesMove>();
 
     private float nextRefreshTime;
+    private UiSelectBuilding panelBuilding;
+    private WorkplaceHiring panelHiring;
+    private bool IsPanel => transform is RectTransform || GetComponentInParent<Canvas>(true) != null;
 
     /// <summary>Сколько рабочих сейчас нанято (с учётом уволенных/погибших).</summary>
     public int WorkerCount
@@ -94,6 +98,7 @@ public class WorkplaceHiring : MonoBehaviour
 
     private void Start()
     {
+        if (!IsPanel) EnsureRoadAccess();
         var production = GetComponent<RecipeBuilding>();
         if (production != null) profession = production.Profession;
         var gathering = GetComponent<GatheringHouse>();
@@ -134,7 +139,16 @@ public class WorkplaceHiring : MonoBehaviour
     /// </summary>
     public bool TryHire()
     {
-        if(!BuildingRoadAccess.Allows(this)){Log("нет дороги к зданию");return false;}
+        if (SaveGameManager.IsLoading || !isActiveAndEnabled) return false;
+        if (IsPanel)
+        {
+            bool hired = PanelTarget is WorkplaceHiring target && target.TryHire();
+            UpdateCounter();
+            return hired;
+        }
+        if (!FactionMember.IsPlayer(gameObject)) return false;
+        EnsureRoadAccess();
+        if (!BuildingRoadAccess.Allows(this)) { Log("нет дороги к зданию"); return false; }
         var production = GetComponent<RecipeBuilding>();
         if (production != null) profession = production.Profession;
         var gathering = GetComponent<GatheringHouse>();
@@ -165,8 +179,8 @@ public class WorkplaceHiring : MonoBehaviour
         if (villager == null)
         {
             Log(hireRadius > 0f
-                ? $"в радиусе {hireRadius:0.#} м нет безработных жителей"
-                : "на карте нет безработных жителей");
+                ? $"в радиусе {hireRadius:0.#} м нет свободных жителей с полным путём до входа"
+                : "нет свободных жителей с полным путём до входа");
             return false;
         }
 
@@ -186,11 +200,48 @@ public class WorkplaceHiring : MonoBehaviour
         return true;
     }
 
+    private void EnsureRoadAccess()
+    {
+        // Старые сцены могут содержать WorkplaceHiring без компонентов здания.
+        if (!TryGetComponent<BuildingHealth>(out _)) gameObject.AddComponent<BuildingHealth>();
+        BuildingRoadAccess.Ensure(gameObject);
+    }
+
+    private WorkplaceHiring PanelTarget => panelBuilding != null && panelBuilding.IsSelected && panelHiring != null &&
+        panelHiring.isActiveAndEnabled && FactionMember.IsPlayer(panelBuilding.gameObject) ? panelHiring : null;
+
+    internal void BindLegacyPanel(UiSelectBuilding building)
+    {
+        if (!IsPanel || building == null || building.transform is RectTransform ||
+            building.GetComponentInParent<Canvas>(true) != null) return;
+
+        panelBuilding = building;
+        panelHiring = building.GetComponent<WorkplaceHiring>();
+        if (panelHiring == null)
+        {
+            panelHiring = building.gameObject.AddComponent<WorkplaceHiring>();
+            panelHiring.profession = profession;
+            panelHiring.maxWorkers = maxWorkers;
+            panelHiring.hireRadius = hireRadius;
+            panelHiring.professionModels = professionModels;
+            panelHiring.villagerPrefab = villagerPrefab;
+            panelHiring.logActions = logActions;
+        }
+        UpdateCounter();
+    }
+
     /// <summary>
     /// Уволить последнего нанятого рабочего (он снова становится жителем).
     /// </summary>
     public bool TryFire()
     {
+        if (IsPanel)
+        {
+            bool fired = PanelTarget is WorkplaceHiring target && target.TryFire();
+            UpdateCounter();
+            return fired;
+        }
+        if (!FactionMember.IsPlayer(gameObject)) return false;
         CleanupWorkers();
 
         if (workers.Count == 0)
@@ -220,10 +271,9 @@ public class WorkplaceHiring : MonoBehaviour
     /// <summary>Принудительно обновить текст счётчика.</summary>
     public void UpdateCounter()
     {
-        CleanupWorkers();
-
-        if (workersText != null)
-            workersText.text = $"Рабочие: {workers.Count}/{MaxWorkers}";
+        if (workersText == null) return;
+        var hiring = IsPanel ? PanelTarget : this;
+        workersText.text = hiring != null ? $"Рабочие: {hiring.WorkerCount}/{hiring.MaxWorkers}" : "";
     }
 
     // ------------------------------------------------------------------ Смена модели
@@ -256,12 +306,7 @@ public class WorkplaceHiring : MonoBehaviour
         // Дом, точка строя и здоровье переносятся на новый префаб,
         // чтобы смена профессии не выселяла юнита и не лечила его.
         HousesScript house = HousesScript.FindHouseOf(current.gameObject);
-        if (house != null)
-            house.Evict(current.gameObject);
-
         bool hasFormationPoint = FormationHold.TryGetPoint(current.gameObject, out Vector3 formationPoint);
-        if (hasFormationPoint)
-            FormationHold.Clear(current.gameObject);
 
         Unit oldUnit = current.GetComponent<Unit>();
         float healthRatio = 1f;
@@ -270,6 +315,7 @@ public class WorkplaceHiring : MonoBehaviour
 
         GameObject instance = Instantiate(prefab, position, rotation, parent);
         instance.name = prefab.name;
+        FactionMember.Set(instance, FactionMember.Of(current.gameObject));
 
         ResourcesMove replacement = instance.GetComponent<ResourcesMove>();
         if (replacement == null)
@@ -286,6 +332,17 @@ public class WorkplaceHiring : MonoBehaviour
             return current;
         }
 
+        if (workplace != null && (!replacement.TryGetComponent<NavMeshAgent>(out var agent) ||
+            !BuildingRoadAccess.TryWorkplacePath(workplace, agent, out _, out _)))
+        {
+            Destroy(instance);
+            Log($"у модели «{prefab.name}» нет полного пути до входа — сохраняю модель жителя");
+            current.SetRole(newRole, workplace);
+            return current;
+        }
+
+        if (house != null) house.Evict(current.gameObject);
+        if (hasFormationPoint) FormationHold.Clear(current.gameObject);
         replacement.SetRole(newRole, workplace);
 
         if (house != null)
@@ -382,7 +439,8 @@ public class WorkplaceHiring : MonoBehaviour
         foreach (ResourcesMove candidate in all)
         {
             if(candidate!=null&&!FactionMember.CanUse(candidate.gameObject,gameObject))continue;
-            if (candidate == null || !candidate.IsUnemployed || !candidate.CanChangeRole)
+            if (candidate == null || !candidate.isActiveAndEnabled || !candidate.IsUnemployed || !candidate.CanChangeRole ||
+                UnitEat.ControlsMovement(candidate) || (candidate.GetComponent<GOScript>()?.HasPlayerOrder ?? false))
                 continue;
 
             float distance = Vector3.Distance(origin, candidate.transform.position);
@@ -390,7 +448,8 @@ public class WorkplaceHiring : MonoBehaviour
             if (hireRadius > 0f && distance > hireRadius)
                 continue;
 
-            if (distance < bestDistance)
+            if (distance < bestDistance && candidate.TryGetComponent<NavMeshAgent>(out var agent) &&
+                BuildingRoadAccess.TryWorkplacePath(gameObject, agent, out _, out _))
             {
                 bestDistance = distance;
                 best = candidate;

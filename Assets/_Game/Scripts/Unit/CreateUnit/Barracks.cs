@@ -223,6 +223,15 @@ public class Barracks : MonoBehaviour
     }
     private bool Complete(Order order)
     {
+        if (TryGetComponent<RtsNetworkBarracks>(out var network))
+        {
+            if (network.TryComplete(order.recruit, order.prefab, order.kit,
+                SpawnPoint != null ? SpawnPoint.transform.position : order.recruit.transform.position, order.horse))
+                return true;
+            Status = "Нет доступного выхода";
+            IsTraining = false;
+            return false;
+        }
         var citizen = order.recruit.gameObject;
         Vector3 position = SpawnPoint != null ? SpawnPoint.transform.position : citizen.transform.position;
         // Это замена модели существующего человека, а не создание нового населения.

@@ -262,6 +262,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: ad88e41fb750b5c439e7f0dfc1c1cf0f, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1756543598334838363}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: ad88e41fb750b5c439e7f0dfc1c1cf0f, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1463796326907727112}
     - targetCorrespondingSourceObject: {fileID: -7146521406498821007, guid: ad88e41fb750b5c439e7f0dfc1c1cf0f, type: 3}
       insertIndex: -1
       addedObject: {fileID: 8809305209763675668}
@@ -438,6 +441,23 @@ MonoBehaviour:
   UIPanel: {fileID: 0}
   panelName: SawMillPanel
   selectionIndicator: {fileID: 0}
+--- !u!114 &1463796326907727112
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5294629949401722039}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 51c5785c05284113bdbb419c2b4aaa36, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  foundationPrefab: {fileID: 0}
+  framePrefab: {fileID: 0}
+  wallsPrefab: {fileID: 0}
+  roofPrefab: {fileID: 0}
+  scaffoldingPrefab: {fileID: 0}
 --- !u!1 &6442769355341004183 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: -7146521406498821007, guid: ad88e41fb750b5c439e7f0dfc1c1cf0f, type: 3}

@@ -22,8 +22,21 @@ public class FarmField : MonoBehaviour
 
     private void Awake()
     {
+        ResetHarvest();
+    }
+
+    internal void ConfigureHarvest(int wheat, float regrowth)
+    {
+        harvestAmount = wheat;
+        growthSeconds = regrowth;
+        ResetHarvest();
+    }
+
+    private void ResetHarvest()
+    {
         remaining = startsRipe ? Mathf.Max(1, harvestAmount) : 0;
         growthRemaining = Mathf.Max(0.1f, growthSeconds);
+        harvestProgress = 0;
     }
     private void OnEnable() { if (!fields.Contains(this)) fields.Add(this); }
     private void OnDisable() { fields.Remove(this); }

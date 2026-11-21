@@ -136,6 +136,8 @@ public class Archer : MonoBehaviour
         ReleaseRotation();
     }
 
+    internal bool IsShowingAttack => attackPlaying;
+
     private void Update()
     {
         if(SaveGameManager.IsLoading)return;
@@ -329,6 +331,8 @@ public class Archer : MonoBehaviour
         int shotDamage = (transform.position - target.position).sqrMagnitude < closeRange * closeRange
             ? Mathf.Max(1, Mathf.RoundToInt(damage * closeRangeDamageMultiplier)) : damage;
         arrow.Launch(target, shotDamage, arrowSpeed, gameObject, aimHeight, shotBlockingLayers.value);
+        if (arrow.TryGetComponent<Unity.Netcode.NetworkObject>(out var network))
+            network.Spawn(destroyWithScene: true);
     }
 
     internal bool TryShootFromDeck(ShipHull ship, ShipHull target, float damageMultiplier)

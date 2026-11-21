@@ -41,7 +41,8 @@ public class PlacementSystem : MonoBehaviour
     public bool useConstructionSites = true;
 
     [Tooltip("Сколько секунд строит один строитель (если для ID не задано своё время)")]
-    public float defaultBuildTime = 8f;
+    public const float StandardBuildTime = 8f;
+    public float defaultBuildTime = StandardBuildTime;
 
     [Tooltip("Необязательно: префаб каркаса/фундамента стройки. " +
              "Если пусто — каркас собирается кодом из простых фигур")]
@@ -197,8 +198,6 @@ public class PlacementSystem : MonoBehaviour
         }
 
         // Страховка: ресурсы могли потратить, пока игрок выбирал место
-        BuildCost.Get(ob, out int wood, out int stone, out int wheat, out int fish);
-
         if (!BuildCost.CanAfford(ob))
         {
             Debug.LogWarning($"[PlacementSystem] Недостаточно ресурсов для постройки \"{ob.Name}\" — размещение отменено.");
@@ -211,6 +210,7 @@ public class PlacementSystem : MonoBehaviour
         if (physicalConstruction)
         {
             materials = new GameObject("ConstructionMaterials").AddComponent<ConstructionMaterials>();
+            FactionMember.Set(materials.gameObject, FactionMember.LocalPlayer);
             if (!materials.Initialize(BuildCost.GetMaterials(ob)))
             {
                 Destroy(materials.gameObject);
@@ -229,7 +229,7 @@ public class PlacementSystem : MonoBehaviour
         if (placed)
         {
             // ---- Списываем ресурсы только если здание реально поставлено ---- //
-            if (!physicalConstruction) SpendResources(ob, wood, stone, wheat, fish);
+            if (!physicalConstruction) SpendResources(ob);
 
             // ---- Ставим стройплощадку вместо готового здания ---- //
             PlacementState placement = buildingState as PlacementState;
@@ -286,7 +286,7 @@ public class PlacementSystem : MonoBehaviour
         StopPlacement();
     }
 
-    private void SpendResources(ObjectData ob, int wood, int stone, int wheat, int fish)
+    private void SpendResources(ObjectData ob)
     {
         if (ResourcesManager.Instance == null)
         {
@@ -294,9 +294,11 @@ public class PlacementSystem : MonoBehaviour
             return;
         }
 
-        ResourcesManager.Instance.Spend(wood, stone, wheat, fish);
-
-        Debug.Log($"[PlacementSystem] Размещено \"{ob.Name}\" (ID = {ob.ID}). Списано: Wood = {wood}, Stone = {stone}, Wheat = {wheat}, Fish = {fish}");
+        var cost = BuildCost.GetMaterials(ob);
+        int Amount(ResourceType type) => cost.TryGetValue(type, out var amount) ? amount : 0;
+        ResourcesManager.Instance.Spend(Amount(ResourceType.Wood), Amount(ResourceType.Stone),
+            Amount(ResourceType.Wheat), Amount(ResourceType.Fish), Amount(ResourceType.Iron), Amount(ResourceType.Gold));
+        Debug.Log($"[PlacementSystem] Размещено \"{ob.Name}\" (ID = {ob.ID}). Материалы списаны по каталогу.");
     }
 
     /// <summary>Время стройки для конкретного здания (по ID) или общее.</summary>
@@ -311,7 +313,7 @@ public class PlacementSystem : MonoBehaviour
             }
         }
 
-        return defaultBuildTime > 0f ? Mathf.Max(0.5f, defaultBuildTime) : 8f;
+        return defaultBuildTime > 0f ? Mathf.Max(0.5f, defaultBuildTime) : StandardBuildTime;
     }
 
     /// <summary>Начисляет бонусы здания (жильё и т.п.).</summary>

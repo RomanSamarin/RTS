@@ -4,12 +4,14 @@ using UnityEngine.AI;
 /// <summary>Длительные боевые приказы и ограничение автоматического преследования.</summary>
 public class MilitaryOrders : MonoBehaviour
 {
+    internal const float DefaultPursuitDistance = 15f;
+    internal const float DefaultAcquisitionRadius = 10f;
     public enum Order { None, AttackMove, Hold, Returning, Patrol }
     public Order Current { get; private set; }
     [Tooltip("Сообщения о приказах и переходах состояния в Console.")]
     public bool debugOrders=true;
-    [Min(1)] public float acquisitionRadius=10f;
-    [Min(1)] public float pursuitDistance=15f;
+    [Min(1)] public float acquisitionRadius=DefaultAcquisitionRadius;
+    [Min(1)] public float pursuitDistance=DefaultPursuitDistance;
     public string Status { get; private set; }="";
     public bool BlocksFood => Current==Order.AttackMove||Current==Order.Returning||Current==Order.Patrol;
     private PatrolRoute<Vector3> patrol;
@@ -157,7 +159,7 @@ public class MilitaryOrders : MonoBehaviour
         if(SaveGameManager.IsLoading)return;
         if(!Ready){if(Current!=Order.None)Pause(NotReadyReason());return;}
         if(GetComponent<Unit>()?.unitHealth<=0)return;
-        if(!FactionMember.IsPlayer(gameObject)){Cancel();return;}
+        if(!FactionMember.HasPlayerOwner(gameObject)){Cancel();return;}
         if(UnitEat.ControlsMovement(this)){if(Current!=Order.None)Pause("перерыв на еду");return;}
         if(BattleCombatant.BlocksActions(this)){if(Current!=Order.None)Pause("боевой эффект блокирует действия");return;}
         Pause("");

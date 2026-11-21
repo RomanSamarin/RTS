@@ -63,7 +63,7 @@ namespace _Game.Scripts.UI
         {
             int total = 0;
             foreach (WarehouseStorage warehouse in WarehouseStorage.All)
-                total = checked(total + warehouse.GetAmount(type));
+                if (FactionMember.IsPlayer(warehouse.gameObject)) total = checked(total + warehouse.GetAmount(type));
             return total;
         }
 
@@ -117,11 +117,15 @@ namespace _Game.Scripts.UI
 
         // Returns the amount physically accepted by the available warehouses.
         public int AddResource(ResourceType type, int amount)
+            => AddResource(type, amount, FactionMember.LocalPlayer);
+
+        private int AddResource(ResourceType type, int amount, Faction owner)
         {
             if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));
             int remaining = amount;
             foreach (WarehouseStorage warehouse in WarehouseStorage.All)
             {
+                if (FactionMember.Of(warehouse.gameObject) != owner) continue;
                 remaining -= warehouse.AddResource(type, remaining);
                 if (remaining == 0) break;
             }
@@ -137,6 +141,7 @@ namespace _Game.Scripts.UI
             distributing = true;
             foreach (WarehouseStorage warehouse in WarehouseStorage.All)
             {
+                if (!FactionMember.IsPlayer(warehouse.gameObject)) continue;
                 remaining -= warehouse.RemoveAvailable(type, remaining);
                 if (remaining == 0) break;
             }
@@ -150,6 +155,7 @@ namespace _Game.Scripts.UI
             if (res == null) return;
             foreach (WarehouseStorage warehouse in WarehouseStorage.All)
             {
+                if (!FactionMember.CanUse(res.gameObject, warehouse.gameObject)) continue;
                 warehouse.Deposit(res);
                 if (!res.HasCargo) break;
             }
@@ -162,7 +168,7 @@ namespace _Game.Scripts.UI
             foreach (ResourceType type in WarehouseStorage.Types)
             {
                 int initial = Mathf.Max(0, GetInitialAmount(type));
-                SetInitialAmount(type, initial - AddResource(type, initial));
+                SetInitialAmount(type, initial - AddResource(type, initial, Faction.Player));
             }
         }
 

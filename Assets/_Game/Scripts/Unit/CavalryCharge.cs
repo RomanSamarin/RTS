@@ -40,7 +40,7 @@ public class CavalryCharge : MonoBehaviour
         float speed = agent.velocity.magnitude;
         // Телепорт/замена модели не считается разгоном.
         float travelled = delta.magnitude <= Mathf.Max(1, agent.speed * Time.deltaTime * 3) ? delta.magnitude : 0;
-        bool retreating = GetComponent<GOScript>()?.IsRetreating ?? false;
+        bool retreating = GetComponent<RtsNetworkUnit>()?.IsRetreating == true || GetComponent<GOScript>()?.IsRetreating == true;
         run.Tick(Time.time, speed, travelled, turn, minimumSpeed, runDistance, retreating || battle.IsStunned || UnitEat.ControlsMovement(this) || agent.isOnOffMeshLink);
         if (direction.sqrMagnitude > 0.001f) previousDirection = direction;
         if (retreating || !ChargeReady || direction.sqrMagnitude < 0.001f) return;

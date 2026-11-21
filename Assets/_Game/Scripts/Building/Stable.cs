@@ -22,6 +22,7 @@ public class Stable : RecipeBuilding
     private static readonly ResourceType[] inputs = { ResourceType.Food, ResourceType.Gold };
     private static readonly ResourceType[] foods = { ResourceType.Food, ResourceType.Bread, ResourceType.Berries };
     private float nextSpawnAttempt;
+    private System.Action<GameObject> spawnNetworkHorse;
     public string Status { get; private set; } = "Нет заказа";
     public int QueueCount => queuedHorses;
     public float Progress => queuedHorses > 0 ? Mathf.Clamp01(elapsed / Mathf.Max(0.1f, horseSeconds)) : 0f;
@@ -62,6 +63,19 @@ public class Stable : RecipeBuilding
         return true;
     }
     public void QueueHorse() { TryQueueHorse(); }
+    internal void ConfigureNetworkStable(Stable definition, GameObject networkHorse, Transform exit,
+        System.Action<GameObject> spawn)
+    {
+        horsePrefab = networkHorse;
+        spawnPoint = exit;
+        spawnNetworkHorse = spawn;
+        foodCost = definition.foodCost;
+        goldCost = definition.goldCost;
+        horseSeconds = definition.horseSeconds;
+        maxQueue = definition.maxQueue;
+        maxNearbyHorses = definition.maxNearbyHorses;
+        paddockRadius = definition.paddockRadius;
+    }
     public void CancelCurrentHorse()
     {
         if (queuedHorses <= 0) return;
@@ -164,10 +178,11 @@ public class Stable : RecipeBuilding
             if (other.enabled && Mathf.Abs(other.transform.position.y - hit.position.y) < 2f &&
                 Vector3.Distance(other.transform.position, hit.position) < template.radius + other.radius + 0.2f) return false;
         var horse = Instantiate(horsePrefab, hit.position, transform.rotation);
-        SaveGameManager.Stamp(horse,horsePrefab);
+        if (spawnNetworkHorse == null) SaveGameManager.Stamp(horse,horsePrefab);
         FactionMember.Set(horse,FactionMember.Of(gameObject));
         horse.SetActive(true);
         horse.GetComponent<Unit>().SetInitialHealthRatio(1f);
+        spawnNetworkHorse?.Invoke(horse);
         return true;
     }
     protected override void OnDisable() { incoming.Clear(); base.OnDisable(); }

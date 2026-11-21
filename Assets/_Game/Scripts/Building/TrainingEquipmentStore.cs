@@ -31,6 +31,8 @@ public class TrainingEquipmentStore : RecipeBuilding
     public override IReadOnlyList<ResourceType> InputTypes => new List<ResourceType>(required.Keys);
     private static int Count(Dictionary<ResourceType, int> items, ResourceType type) => items.TryGetValue(type, out int amount) ? amount : 0;
     public int LocalAmount(ResourceType type) => Count(stock, type);
+    internal void AddStartingStock(ResourceType type, int amount) =>
+        stock[type] = Mathf.Clamp(LocalAmount(type) + Mathf.Max(0, amount), 0, inputCapacity);
     public int RequiredAmount(ResourceType type) => Count(required, type);
     public override int StoredInput { get { int total = 0; foreach (var amount in stock.Values) total += amount; return total; } }
     public override int StoredOutput

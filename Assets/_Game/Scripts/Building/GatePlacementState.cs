@@ -58,6 +58,7 @@ public class GatePlacementState : IBuildingState
     {
         if (!Evaluate(position)) { Debug.LogWarning("[Ворота] " + error); return false; }
         var materials = new GameObject("GateMaterials").AddComponent<ConstructionMaterials>();
+        FactionMember.Set(materials.gameObject, FactionMember.Of(source.gameObject));
         if (!materials.Initialize(BuildCost.GetMaterials(data))) { Object.Destroy(materials.gameObject); return false; }
         int index = -1;
         ConstructionSite site = null;
@@ -66,7 +67,7 @@ public class GatePlacementState : IBuildingState
         {
             index = placer.PlaceObject(data.Prefab, source.transform.position, source.transform.rotation);
             var gate = placer.GetPlacedObject(index);
-            FactionMember.Set(gate,Faction.Player);
+            FactionMember.Set(gate,FactionMember.Of(source.gameObject));
             site = ConstructionSite.Begin(gate, buildTime, Vector2Int.one, sitePrefab);
             if (site == null) return false;
             site.Materials = materials; materials.transform.SetParent(site.transform, false);
